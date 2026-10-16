@@ -1,0 +1,25 @@
+# Operating system
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor and temporary files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.tmp
+*.bak
+*.log
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Common generated output (stack not yet selected)
+node_modules/
+dist/
+build/
+coverage/
+.cache/
