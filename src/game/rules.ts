@@ -3,6 +3,17 @@ export type PitchMotion = 'straight' | 'slider' | 'changeup' | 'zigzag' | 'accel
 export type PitchEffect = 'none' | 'bounce' | 'vanish' | 'clone' | 'shrink';
 export type Outcome = 'HR' | 'HIT' | 'FOUL' | 'MISS' | 'TAKE';
 export type UpgradeId = 'power' | 'meet' | 'speed';
+export type BattingSide = 'left' | 'right';
+// Left-handed batter stands on the first-base side of the plate in the
+// batter-facing-pitcher view. Mirror *visuals*, not pitch physics.
+export function battingSideSign(side: BattingSide): 1 | -1 {
+  return side === 'left' ? 1 : -1;
+}
+export interface GameplaySettings {
+  defaultBattingSide: BattingSide;
+  strikeHalfWidth: number;
+  batAimHalfWidth: number;
+}
 
 export interface WeightedPitch {
   id: string;
@@ -46,6 +57,7 @@ export interface UpgradeDefinition {
 }
 export interface GameContent {
   title: string;
+  gameplay?: GameplaySettings;
   stages: Stage[];
   pitchers: Pitcher[];
   modes: Mode[];
@@ -248,6 +260,13 @@ export function validateContent(config: GameContent): void {
   if (!Array.isArray(config.stages) || !Array.isArray(config.modes) || !Array.isArray(config.pitchers)) {
     throw new Error('game-content.json の配列が不足しています');
   }
+  if (config.gameplay && (
+    !['left','right'].includes(config.gameplay.defaultBattingSide) ||
+    !Number.isFinite(config.gameplay.strikeHalfWidth) ||
+    config.gameplay.strikeHalfWidth <= 0 ||
+    !Number.isFinite(config.gameplay.batAimHalfWidth) ||
+    config.gameplay.batAimHalfWidth <= 0
+  )) throw new Error('不正な打席設定です');
   const stageIds = new Set(config.stages.map(s => s.id));
   const pitcherIds = new Set(config.pitchers.map(p => p.id));
   if (stageIds.size !== config.stages.length) throw new Error('ステージIDが重複しています');
