@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101e30" />
+  <meta name="description" content="短編ホームランゲームの開発試作版。" />
+  <title>HYPER HOME RUN DERBY — P0</title>
+</head>
+<body>
+  <main id="app" class="shell">
+    <header class="app-header">
+      <span class="brand">HYPER HOME RUN DERBY <small>PROTOTYPE</small></span>
+      <span id="app-status" class="subtle">初期化中…</span>
+    </header>
+
+    <section id="title-view" class="screen is-hidden">
+      <div class="hero">
+        <p class="eyebrow">A TINY, UNREASONABLE BASEBALL GAME</p>
+        <h1>HYPER<br>HOME RUN<br>DERBY</h1>
+        <p>マウスでバットを動かし、左クリック長押しでスイング。<br>決められた球数でホームランのノルマを達成せよ。</p>
+        <div id="mode-list" class="mode-list"></div>
+        <p class="subtle">セーブはありません。ブラウザを閉じると進行状況は失われます。</p>
+      </div>
+    </section>
+
+    <section id="hub-view" class="screen is-hidden">
+      <div class="page-heading">
+        <div><p class="eyebrow">STAGE SELECT</p><h2 id="hub-heading">ステージ選択</h2></div>
+        <div class="timer-block"><span>通しタイム</span><strong class="run-timer">00:00.00</strong></div>
+      </div>
+      <div class="hub-layout">
+        <article class="panel">
+          <h3>対戦相手</h3>
+          <div id="stage-list" class="stage-list"></div>
+        </article>
+        <article class="panel">
+          <h3>能力強化</h3>
+          <p class="point-line">所持ポイント <strong id="points">0 P</strong></p>
+          <div id="upgrade-list"></div>
+          <p class="subtle">負けてもポイントは増えます。強化中も通しタイマーは止まりません。</p>
+        </article>
+      </div>
+      <button id="abandon-button" class="button ghost">タイトルに戻る（今回の記録を破棄）</button>
+    </section>
+
+    <section id="game-view" class="screen is-hidden">
+      <div class="game-topbar">
+        <div><strong id="game-stage-title"></strong><small id="game-pitch-name"></small></div>
+        <div class="timer-block"><span>通しタイム</span><strong class="run-timer">00:00.00</strong></div>
+      </div>
+      <div id="game-canvas" aria-label="ホームランダービーのプレイ画面"></div>
+      <div class="game-help">マウス左右：バット移動 ／ 左クリック長押し：スイング ／ ボールが手前へ来た時に振る</div>
+      <div id="stage-overlay" class="stage-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="stage-outcome-title">
+        <div class="overlay-panel">
+          <p id="stage-outcome-label" class="eyebrow"></p>
+          <h2 id="stage-outcome-title"></h2>
+          <p id="stage-outcome-detail"></p>
+          <button id="continue-button" class="button primary">ステージ選択へ</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="results-view" class="screen is-hidden">
+      <div class="page-heading">
+        <div><p class="eyebrow">GAME CLEAR</p><h2>通しリザルト</h2></div>
+        <span id="result-mode" class="tag"></span>
+      </div>
+      <div class="result-hero">
+        <div><span>CLEAR TIME</span><strong id="result-time"></strong></div>
+        <div><span>MAX DISTANCE</span><strong id="result-distance"></strong></div>
+      </div>
+      <div class="result-columns">
+        <article class="panel">
+          <h3>PLAYER ANALYSIS</h3>
+          <div id="radar-mount"></div>
+        </article>
+        <article class="panel">
+          <h3>BATTING STATS</h3>
+          <div id="stats-mount"></div>
+        </article>
+      </div>
+      <div class="panel share-panel">
+        <h3>結果をXで共有</h3>
+        <p>PNG画像とハッシュタグ付きの投稿文を用意します。PCでは①コピー→②投稿画面→Ctrl+V。</p>
+        <div class="actions">
+          <button id="copy-button" class="button primary" disabled>① 画像をコピー</button>
+          <button id="x-button" class="button">② X投稿画面</button>
+          <button id="native-share-button" class="button" disabled>OSの共有メニュー</button>
+          <button id="download-button" class="button ghost" disabled>PNGを保存</button>
+        </div>
+        <p id="share-status" class="subtle" role="status" aria-live="polite">投稿用画像を準備中…</p>
+      </div>
+      <button id="restart-button" class="button ghost">タイトルへ戻る</button>
+    </section>
+
+    <section id="error-view" class="screen is-hidden">
+      <h2>読み込みに失敗しました</h2>
+      <p id="error-message"></p>
+      <button class="button" onclick="location.reload()">再読み込み</button>
+    </section>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
