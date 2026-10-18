@@ -159,6 +159,7 @@ export function followBat(current: number, target: number, elapsedMs: number, le
 }
 export function pitchHorizontalX(motion: PitchMotion, startX: number, endX: number, progress: number): number {
   const p = clamp(progress, 0, 1);
+  if (p === 1) return endX;
   const travel = motion === 'accelerate'
     ? p < 0.62 ? (p / 0.62) * 0.31 : 0.31 + ((p - 0.62) / 0.38) * 0.69
     : p;
