@@ -92,3 +92,10 @@ test('run timer, radar and hit summary are derived from pitch history',()=>{
   assert.equal(report.longestStreak,1);
   assert.equal(formatTime(60000),'01:00.00');
 });
+
+test('first-pass balance: clean hits can be HR while modest contacts are only HIT',()=>{
+  const best=swingContact({offset:0,width:80,timingErrorMs:0,powerLevel:1,fenceDistance:225,random:()=>0.5});
+  const modest=swingContact({offset:40,width:80,timingErrorMs:75,powerLevel:1,fenceDistance:225,random:()=>0.5});
+  assert.equal(best?.result,'HR');
+  assert.equal(modest?.result,'HIT');
+});
