@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
-  addStageResult, buyUpgrade, followBat, formatTime, makeRun, pitchHorizontalX,
-  requiredHomeRuns, stagePoints, summarizeRun, swingContact, weightedPick
+  addStageResult, battingSideSign, buyUpgrade, followBat, formatTime, makeRun, pitchHorizontalX,
+  requiredHomeRuns, stagePoints, summarizeRun, swingContact, validateContent, weightedPick
 } from '../src/game/rules.ts';
 
 const mode = {
@@ -98,4 +99,14 @@ test('first-pass balance: clean hits can be HR while modest contacts are only HI
   const modest=swingContact({offset:40,width:80,timingErrorMs:75,powerLevel:1,fenceDistance:225,random:()=>0.5});
   assert.equal(best?.result,'HR');
   assert.equal(modest?.result,'HIT');
+});
+
+test('batting stance is left by default and both orientations share the same x physics',()=>{
+  assert.equal(battingSideSign('left'), 1);
+  assert.equal(battingSideSign('right'), -1);
+  const config = JSON.parse(readFileSync(new URL('../public/config/game-content.json', import.meta.url), 'utf8'));
+  assert.equal(config.gameplay.defaultBattingSide, 'left');
+  validateContent(config);
+  assert(config.stages.every(s => s.horizontalSpread <= config.gameplay.strikeHalfWidth));
+  assert(config.stages[0].pitchDurationMs < 1500);
 });
