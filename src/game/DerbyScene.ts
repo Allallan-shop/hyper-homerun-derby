@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import {
   clamp, followBat, pitchDuration, pitchHorizontalX, requiredHomeRuns,
-  swingContact, weightedPick,
-  type AssetManifest, type Mode, type PitchRecord, type Pitcher,
+  swingContact, weightedPick, battingSideSign,
+  type AssetManifest, type BattingSide, type Mode, type PitchRecord, type Pitcher,
   type Stage, type WeightedPitch, type UpgradeId
 } from './rules';
 
@@ -18,6 +18,7 @@ interface FlightAnimation {
   result: string;
   direction: number;
   distanceM: number;
+  duration: number;
 }
 export interface MatchOptions {
   stage: Stage;
@@ -25,12 +26,18 @@ export interface MatchOptions {
   pitcher: Pitcher;
   upgrades: Record<UpgradeId, number>;
   assets: AssetManifest;
+  battingSide: BattingSide;
+  strikeHalfWidth: number;
+  batAimHalfWidth: number;
   onReady: () => void;
   onFinished: (records: PitchRecord[]) => void;
 }
 
 const WIDTH = 960;
 const HEIGHT = 600;
+const PLATE_X = WIDTH / 2;
+const CONTACT_Y = 456;
+const MAX_FLIGHT_HOLD_MS = 820;
 
 export class DerbyScene extends Phaser.Scene {
   private options: MatchOptions;
@@ -39,6 +46,8 @@ export class DerbyScene extends Phaser.Scene {
   private prompt!: Phaser.GameObjects.Text;
   private pitcherSprite: Phaser.GameObjects.Image | null = null;
   private batterSprite: Phaser.GameObjects.Image | null = null;
+  private backgroundSprite: Phaser.GameObjects.Image | null = null;
+  private ballSprite: Phaser.GameObjects.Image | null = null;
   private pitch: ActivePitch | null = null;
   private flight: FlightAnimation | null = null;
   private batX = WIDTH / 2;
@@ -70,12 +79,16 @@ export class DerbyScene extends Phaser.Scene {
   }
 
   create(): void {
+    if (this.textures.exists('background')) {
+      this.backgroundSprite = this.add.image(PLATE_X, HEIGHT / 2, 'background')
+        .setDisplaySize(WIDTH, HEIGHT).setDepth(-2);
+    }
     this.gfx = this.add.graphics();
     this.hud = this.add.text(27, 20, '', {
       color: '#ffffff', fontSize: '24px', fontFamily: 'sans-serif',
       stroke: '#0d1c26', strokeThickness: 4
     }).setDepth(4);
-    this.prompt = this.add.text(WIDTH / 2, 70, '', {
+    this.prompt = this.add.text(WIDTH / 2, 154, '', {
       color: '#dcfff1', fontSize: '23px', fontFamily: 'sans-serif',
       stroke: '#0d1c26', strokeThickness: 5, align: 'center'
     }).setOrigin(0.5).setDepth(4);
@@ -85,16 +98,20 @@ export class DerbyScene extends Phaser.Scene {
         .setDisplaySize(110, 145).setDepth(2);
     }
     if (this.textures.exists('batter')) {
-      this.batterSprite = this.add.image(this.batX - 94, 478, 'batter')
-        .setDisplaySize(160, 185).setDepth(2);
+      this.batterSprite = this.add.image(this.batterBodyX(), 477, 'batter')
+        .setDisplaySize(165, 190).setFlipX(this.options.battingSide === 'right').setDepth(2);
     }
 
+    if (this.textures.exists('ball')) {
+      this.ballSprite = this.add.image(0, 0, 'ball')
+        .setDepth(4).setVisible(false);
+    }
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      this.aimX = clamp(pointer.x, 110, WIDTH - 110);
+      this.aimX = this.limitAim(pointer.x);
     });
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (pointer.button !== 0 || this.finished || !this.pitch) return;
-      this.aimX = clamp(pointer.x, 110, WIDTH - 110);
+      this.aimX = this.limitAim(pointer.x);
       this.swingAt = this.clock;
       this.holding = true;
       this.pitch.swung = true;
@@ -106,6 +123,17 @@ export class DerbyScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => window.removeEventListener('blur', this.onBlur));
     this.render();
     this.options.onReady();
+  }
+
+  // Bat graphic + contact center share batX. The player's body stays inside
+  // its batting box; switching sides only mirrors visuals.
+  private batterBodyX(): number {
+    const sign = battingSideSign(this.options.battingSide);
+    return PLATE_X + sign * 140 + (this.batX - PLATE_X) * 0.15;
+  }
+
+  private limitAim(x: number): number {
+    return clamp(x, PLATE_X - this.options.batAimHalfWidth, PLATE_X + this.options.batAimHalfWidth);
   }
 
   private releaseSwing(): void {
@@ -122,9 +150,10 @@ export class DerbyScene extends Phaser.Scene {
   private startPitch(): void {
     const { stage, mode } = this.options;
     const plan = weightedPick(stage.pool);
-    const spread = stage.horizontalSpread * mode.spreadMultiplier;
-    // Uniform, continuous x location. Early stages use a narrower range.
-    const landing = clamp(WIDTH / 2 + (Math.random() * 2 - 1) * spread, 110, WIDTH - 110);
+    const spread = Math.min(this.options.strikeHalfWidth,
+      stage.horizontalSpread * mode.spreadMultiplier);
+    // Continuous horizontal landing, never a full-screen "strike zone".
+    const landing = PLATE_X + (Math.random() * 2 - 1) * spread;
     this.pitch = {
       plan,
       duration: pitchDuration(stage, mode, plan.type),
@@ -146,7 +175,13 @@ export class DerbyScene extends Phaser.Scene {
 
     if (this.flight) {
       this.flight.elapsed += dt;
-      if (this.flight.elapsed > 960) this.flight = null;
+      if (this.flight.elapsed >= this.flight.duration + MAX_FLIGHT_HOLD_MS) {
+        this.flight = null;
+      }
+      // Never throw the next pitch while a contacted ball is airborne or
+      // before the landing marker has been shown.
+      this.render();
+      return;
     }
 
     if (!this.pitch) {
@@ -208,9 +243,13 @@ export class DerbyScene extends Phaser.Scene {
     this.pitch = null;
     this.swingAt = null;
     this.holding = false;
-    this.nextPitchDelay = record.result === 'HR' ? 1150 : 870;
+    this.nextPitchDelay = 650;
     if (['HR', 'HIT', 'FOUL'].includes(record.result)) {
-      this.flight = { elapsed: 0, result: record.result, direction, distanceM: record.distanceM };
+      this.flight = {
+        elapsed: 0, result: record.result, direction,
+        distanceM: record.distanceM,
+        duration: clamp(1150 + record.distanceM * 3.1, 1600, 2850)
+      };
       this.playIfAvailable(record.result === 'HR' ? 'homerun' : record.result === 'FOUL' ? 'foul' : 'bat_hit');
     }
     const word = record.result === 'HR' ? 'HOME RUN!!'
