@@ -47,7 +47,7 @@ p { line-height: 1.65; }
 .stage-row button { flex-shrink: 0; }
 .point-line { display: flex; justify-content: space-between; }
 #game-canvas { position: relative; width: 100%; aspect-ratio: 8 / 5; max-height: 700px; overflow: hidden; background: #162c39; border: 2px solid #53717e; border-radius: 14px; }
-#game-canvas canvas { display: block; }
+#game-canvas canvas { display: block; cursor: none; }
 .game-help { color: #c1d0d5; font-size: .87rem; margin: 12px 0; text-align: center; }
 .game-topbar strong { display: block; font-size: 1.23rem; }
 .game-topbar small { display: block; color: #a4b7c6; }
