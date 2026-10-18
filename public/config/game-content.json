@@ -59,8 +59,8 @@
       "pitcherId": "rookie",
       "totalPitches": 10,
       "requiredHomeruns": 3,
-      "pitchDurationMs": 1950,
-      "horizontalSpread": 105,
+      "pitchDurationMs": 1250,
+      "horizontalSpread": 55,
       "fenceDistance": 225,
       "pool": [
         {
@@ -83,8 +83,8 @@
       "pitcherId": "trickster",
       "totalPitches": 18,
       "requiredHomeruns": 7,
-      "pitchDurationMs": 1700,
-      "horizontalSpread": 185,
+      "pitchDurationMs": 1070,
+      "horizontalSpread": 75,
       "fenceDistance": 245,
       "pool": [
         {
@@ -119,8 +119,8 @@
       "pitcherId": "chaos",
       "totalPitches": 28,
       "requiredHomeruns": 15,
-      "pitchDurationMs": 1570,
-      "horizontalSpread": 275,
+      "pitchDurationMs": 930,
+      "horizontalSpread": 92,
       "fenceDistance": 265,
       "pool": [
         {
@@ -180,5 +180,10 @@
     "hashtag": "ハイパーホームランダービー",
     "gameUrl": "",
     "headline": "HYPER HOME RUN DERBY"
+  },
+  "gameplay": {
+    "defaultBattingSide": "left",
+    "strikeHalfWidth": 96,
+    "batAimHalfWidth": 105
   }
 }
