@@ -25,6 +25,7 @@ export interface MatchOptions {
   pitcher: Pitcher;
   upgrades: Record<UpgradeId, number>;
   assets: AssetManifest;
+  onReady: () => void;
   onFinished: (records: PitchRecord[]) => void;
 }
 
@@ -104,6 +105,7 @@ export class DerbyScene extends Phaser.Scene {
     window.addEventListener('blur', this.onBlur);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => window.removeEventListener('blur', this.onBlur));
     this.render();
+    this.options.onReady();
   }
 
   private releaseSwing(): void {
