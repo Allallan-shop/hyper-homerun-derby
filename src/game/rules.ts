@@ -181,7 +181,7 @@ export function pitchHorizontalX(motion: PitchMotion, startX: number, endX: numb
   return base;
 }
 export function pitchDuration(stage: Stage, mode: Mode, motion: PitchMotion): number {
-  const factor = motion === 'changeup' ? 1.27 : motion === 'accelerate' ? 0.97 : 1;
+  const factor = motion === 'changeup' ? 1.65 : motion === 'accelerate' ? 0.97 : 1;
   return Math.max(500, stage.pitchDurationMs * mode.speedMultiplier * factor);
 }
 export function swingContact(input: {
