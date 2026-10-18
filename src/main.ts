@@ -171,6 +171,9 @@ class DerbyApp {
       scene: new DerbyScene({
         stage, mode: run.mode, pitcher,
         upgrades: { ...run.upgrades }, assets: this.assets,
+        battingSide: this.content.gameplay?.defaultBattingSide ?? 'left',
+        strikeHalfWidth: this.content.gameplay?.strikeHalfWidth ?? 96,
+        batAimHalfWidth: this.content.gameplay?.batAimHalfWidth ?? 105,
         onReady: () => { if (run.startedAt === null) run.startedAt = Date.now(); },
         onFinished: records => this.finishStage(stage, records)
       })
