@@ -1,0 +1,262 @@
+// Independent game rules. No Phaser, browser APIs, account state or I/O.
+export type PitchMotion = 'straight' | 'slider' | 'changeup' | 'zigzag' | 'accelerate';
+export type PitchEffect = 'none' | 'bounce' | 'vanish' | 'clone' | 'shrink';
+export type Outcome = 'HR' | 'HIT' | 'FOUL' | 'MISS' | 'TAKE';
+export type UpgradeId = 'power' | 'meet' | 'speed';
+
+export interface WeightedPitch {
+  id: string;
+  type: PitchMotion;
+  effect: PitchEffect;
+  weight: number;
+}
+export interface Stage {
+  id: string;
+  name: string;
+  pitcherId: string;
+  totalPitches: number;
+  requiredHomeruns: number;
+  pitchDurationMs: number;
+  horizontalSpread: number;
+  fenceDistance: number;
+  pool: WeightedPitch[];
+}
+export interface Mode {
+  id: string;
+  name: string;
+  enabled: boolean;
+  unlockAfter?: string;
+  stageIds: string[];
+  speedMultiplier: number;
+  spreadMultiplier: number;
+  quotaMultiplier: number;
+}
+export interface Pitcher {
+  id: string;
+  name: string;
+  tagline: string;
+  imageId: string;
+  voiceId: string;
+}
+export interface UpgradeDefinition {
+  label: string;
+  maxLevel: number;
+  baseCost: number;
+  stepCost: number;
+}
+export interface GameContent {
+  title: string;
+  stages: Stage[];
+  pitchers: Pitcher[];
+  modes: Mode[];
+  upgrades: Record<UpgradeId, UpgradeDefinition>;
+  share: { hashtag: string; gameUrl: string; headline: string };
+}
+export interface AssetManifest {
+  images: Record<string, string>;
+  sounds: Record<string, string>;
+}
+export interface PitchRecord {
+  stageId: string;
+  pitchId: string;
+  motion: PitchMotion;
+  effect: PitchEffect;
+  result: Outcome;
+  swung: boolean;
+  contactOffset: number | null;
+  timingErrorMs: number | null;
+  distanceM: number;
+}
+export interface RunState {
+  mode: Mode;
+  startedAt: number | null;
+  finishedAt: number | null;
+  upgrades: Record<UpgradeId, number>;
+  points: number;
+  nextStageIndex: number;
+  clearedStages: Set<string>;
+  records: PitchRecord[];
+  retries: number;
+}
+export interface Contact {
+  result: 'HR' | 'HIT' | 'FOUL';
+  distanceM: number;
+  direction: number; // -1 left ... +1 right
+  quality: number; // 0 ... 1
+}
+export interface RunReport {
+  clearTimeMs: number;
+  mode: string;
+  pitches: number;
+  homeruns: number;
+  homeRunRate: number;
+  swings: number;
+  contacts: number;
+  contactRate: number;
+  bestDistance: number;
+  longestStreak: number;
+  retries: number;
+  averageTimingErrorMs: number | null;
+  radar: [number, number, number, number, number];
+}
+
+export function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+export function requiredHomeRuns(stage: Stage, mode: Mode): number {
+  return Math.min(stage.totalPitches, Math.max(1, Math.ceil(stage.requiredHomeruns * mode.quotaMultiplier)));
+}
+export function weightedPick<T extends { weight: number }>(values: T[], random = Math.random): T {
+  if (!values.length) throw new Error('球種が設定されていません');
+  const sum = values.reduce((s, v) => s + Math.max(0, v.weight), 0);
+  if (sum <= 0) throw new Error('球種の抽選重みがすべて0です');
+  let needle = clamp(random(), 0, 0.9999999) * sum;
+  for (const value of values) {
+    needle -= Math.max(0, value.weight);
+    if (needle < 0) return value;
+  }
+  return values[values.length - 1];
+}
+export function makeRun(mode: Mode): RunState {
+  return {
+    mode,
+    startedAt: null,
+    finishedAt: null,
+    upgrades: { power: 1, meet: 1, speed: 1 },
+    points: 0,
+    nextStageIndex: 0,
+    clearedStages: new Set<string>(),
+    records: [],
+    retries: 0
+  };
+}
+export function upgradeCost(level: number, rule: UpgradeDefinition): number {
+  return Math.max(0, rule.baseCost + (level - 1) * rule.stepCost);
+}
+export function buyUpgrade(run: RunState, key: UpgradeId, defs: GameContent['upgrades']): boolean {
+  const rule = defs[key];
+  const level = run.upgrades[key];
+  if (!rule || level >= rule.maxLevel) return false;
+  const price = upgradeCost(level, rule);
+  if (run.points < price) return false;
+  run.points -= price;
+  run.upgrades[key]++;
+  return true;
+}
+export function stagePoints(records: PitchRecord[], cleared: boolean): number {
+  const score = records.reduce((total, record) => {
+    if (record.result === 'HR') return total + 90;
+    if (record.result === 'HIT') return total + 20;
+    if (record.result === 'FOUL') return total + 5;
+    return total;
+  }, 0);
+  return score + (cleared ? 280 : 60);
+}
+// Cursor following is frame-time independent (exponential smoothing).
+export function followBat(current: number, target: number, elapsedMs: number, level: number): number {
+  const response = 0.0025 + (level - 1) * 0.00085;
+  return current + (target - current) * (1 - Math.exp(-response * Math.max(0, elapsedMs)));
+}
+export function pitchHorizontalX(motion: PitchMotion, startX: number, endX: number, progress: number): number {
+  const p = clamp(progress, 0, 1);
+  const travel = motion === 'accelerate'
+    ? p < 0.62 ? (p / 0.62) * 0.31 : 0.31 + ((p - 0.62) / 0.38) * 0.69
+    : p;
+  const base = startX + (endX - startX) * travel;
+  if (motion === 'slider') return base + 48 * Math.sin(Math.PI * p);
+  if (motion === 'zigzag') return base + Math.sin(p * Math.PI * 6) * 68 * p;
+  return base;
+}
+export function pitchDuration(stage: Stage, mode: Mode, motion: PitchMotion): number {
+  const factor = motion === 'changeup' ? 1.27 : motion === 'accelerate' ? 0.97 : 1;
+  return Math.max(500, stage.pitchDurationMs * mode.speedMultiplier * factor);
+}
+export function swingContact(input: {
+  offset: number;
+  width: number;
+  timingErrorMs: number;
+  powerLevel: number;
+  fenceDistance: number;
+  random?: () => number;
+}): Contact | null {
+  const { offset, width, timingErrorMs, powerLevel, fenceDistance } = input;
+  if (Math.abs(offset) > width || Math.abs(timingErrorMs) > 150) return null;
+  const normalizedOffset = offset / width;
+  const normalizedTiming = timingErrorMs / 150;
+  const quality = clamp(1 - Math.abs(normalizedOffset) * 0.34 - Math.abs(normalizedTiming) * 0.42, 0, 1);
+  const direction = normalizedOffset * 0.46 + normalizedTiming * 0.8;
+  const random = input.random ?? Math.random;
+  const distanceM = Math.max(1, Math.round((65 + powerLevel * 17 + quality * 205) * (0.84 + random() * 0.32)));
+  const result: Contact['result'] = Math.abs(direction) > 0.89
+    ? 'FOUL'
+    : distanceM >= fenceDistance ? 'HR' : 'HIT';
+  return { result, distanceM, direction, quality };
+}
+export function addStageResult(run: RunState, stage: Stage, records: PitchRecord[], cleared: boolean): number {
+  run.records.push(...records);
+  const points = stagePoints(records, cleared);
+  run.points += points;
+  if (cleared) {
+    run.clearedStages.add(stage.id);
+    const stageIndex = run.mode.stageIds.indexOf(stage.id);
+    if (stageIndex >= run.nextStageIndex) run.nextStageIndex = Math.min(run.mode.stageIds.length, stageIndex + 1);
+  } else {
+    run.retries++;
+  }
+  return points;
+}
+export function summarizeRun(run: RunState): RunReport {
+  const rows = run.records;
+  const pitches = rows.length;
+  const homeruns = rows.filter(x => x.result === 'HR').length;
+  const swings = rows.filter(x => x.swung).length;
+  const contacts = rows.filter(x => ['HR', 'HIT', 'FOUL'].includes(x.result)).length;
+  const bestDistance = rows.reduce((best, r) => Math.max(best, r.distanceM), 0);
+  const timing = rows.map(x => x.timingErrorMs).filter((n): n is number => n !== null);
+  const averageTimingErrorMs = timing.length ? timing.reduce((a,b) => a + Math.abs(b), 0) / timing.length : null;
+  let streak = 0;
+  let longestStreak = 0;
+  for (const row of rows) {
+    streak = row.result === 'HR' ? streak + 1 : 0;
+    longestStreak = Math.max(longestStreak, streak);
+  }
+  const homeRunRate = pitches ? homeruns / pitches : 0;
+  const contactRate = swings ? contacts / swings : 0;
+  const radar: RunReport['radar'] = [
+    Math.round(contactRate * 100),
+    Math.round(homeRunRate * 100),
+    averageTimingErrorMs === null ? 0 : Math.round(clamp(100 - averageTimingErrorMs / 1.6, 0, 100)),
+    Math.round(clamp(longestStreak / 10 * 100, 0, 100)),
+    Math.round(clamp(bestDistance / 550 * 100, 0, 100))
+  ];
+  return {
+    clearTimeMs: Math.max(0, (run.finishedAt ?? Date.now()) - (run.startedAt ?? Date.now())),
+    mode: run.mode.name,
+    pitches, homeruns, homeRunRate, swings, contacts, contactRate,
+    bestDistance, longestStreak, retries: run.retries, averageTimingErrorMs, radar
+  };
+}
+export function formatTime(ms: number): string {
+  const positive = Math.max(0, Math.floor(ms));
+  const minutes = Math.floor(positive / 60000);
+  const seconds = Math.floor(positive / 1000) % 60;
+  const centiseconds = Math.floor((positive % 1000) / 10);
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(centiseconds).padStart(2, '0')}`;
+}
+export function validateContent(config: GameContent): void {
+  if (!Array.isArray(config.stages) || !Array.isArray(config.modes) || !Array.isArray(config.pitchers)) {
+    throw new Error('game-content.json の配列が不足しています');
+  }
+  const stageIds = new Set(config.stages.map(s => s.id));
+  const pitcherIds = new Set(config.pitchers.map(p => p.id));
+  if (stageIds.size !== config.stages.length) throw new Error('ステージIDが重複しています');
+  if (config.modes.some(m => !m.stageIds.length || m.stageIds.some(id => !stageIds.has(id)))) {
+    throw new Error('モードに不明なステージIDがあります');
+  }
+  for (const stage of config.stages) {
+    if (!pitcherIds.has(stage.pitcherId) || stage.totalPitches <= 0 || stage.requiredHomeruns > stage.totalPitches ||
+      stage.requiredHomeruns <= 0 || stage.pool.length === 0 || stage.pool.every(p => p.weight <= 0)) {
+      throw new Error(`不正なステージ設定: ${stage.id}`);
+    }
+  }
+}
