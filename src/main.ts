@@ -76,8 +76,8 @@ class DerbyApp {
   }
   private paintTimer(): void {
     const run = this.run;
-    const elapsed = run?.startedAt === null || !run
-      ? 0 : Math.max(0, (run.finishedAt ?? Date.now()) - run.startedAt);
+    const elapsed = run && run.startedAt !== null
+      ? Math.max(0, (run.finishedAt ?? Date.now()) - run.startedAt) : 0;
     document.querySelectorAll<HTMLElement>('.run-timer').forEach(node => node.textContent = formatTime(elapsed));
   }
   private renderModes(): void {
