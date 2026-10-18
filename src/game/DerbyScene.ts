@@ -319,8 +319,6 @@ export class DerbyScene extends Phaser.Scene {
       g.lineStyle(2, 0xdf4547, 0.95).strokeCircle(ballX, ballY, radius * 0.64);
     }
     g.fillStyle(0x13293c, .87).fillRoundedRect(245, 451, 470, 112, 18);
-    const status = t >= 1 ? '着弾点を確認' : '打球をカメラ追跡中…';
-    this.prompt.setText(status);
     this.hud.setText(`打球結果: ${flight.result}    ${flight.distanceM.toLocaleString('ja-JP')}m`);
     if (t >= 1) {
       g.lineStyle(6, 0xffd86d, 1).strokeCircle(targetX, targetY, 27);
