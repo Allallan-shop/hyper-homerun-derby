@@ -1,7 +1,7 @@
 # R5 Original Game Visual Reference — evidence before camera changes
 
 Date: 2026-10-19 JST  
-Status: **REFERENCE_STILLS_VERIFIED / VIDEO_MOTION_NOT_YET_OBSERVED / IMPLEMENTATION_HOLD_FOR_CAMERA**
+Status: **VIDEO_PRIMARY_OBSERVED / CAMERA_CHANGE_CANDIDATE / R3_SYSTEM_PROVISIONAL_PASS**
 
 ## Purpose and boundaries
 
@@ -65,3 +65,32 @@ Draft PR #2 remains unmerged. No public deployment. Update this document with ti
 - **Limitation unchanged:** the current chat's browser connection is read-only and cannot click/play/record the Ruffle canvas; public-web retrieval gives HTML/text but not the on-screen frame sequence. This confirmation does **not** grant us measured camera transitions or video-frame timing.
 - Next research input, if direct playable browser control remains unavailable: **one short 10–20-second recording** of a successful hit including contact → flight → landing/result → return to next pitch (optionally another missed hit). Can be captured with Windows Xbox Game Bar; no game extraction or source copying required.
 - Once video bytes are available, extract a handful of representative frames, record a contact/camera/ball/field/HUD timeline, and implement one restrained source change while keeping R3 gameplay and user-approved scope unchanged. Do not copy source images or software assets into the public repo.
+
+
+## 2026-10-19 PRIMARY VIDEO MEASUREMENTS (overrides previous video-unavailable notes)
+
+**Evidence:** The user provided the actual 122.15-second, 1920×1080, **60fps** Japanese Ruffle original-game MP4 (`2026-10-19 18-16-42.mp4`). We directly sampled its frames (1fps overview, ~5fps detailed, 60fps around transitions). The original gameplay panel occupies approximately x=209..1440 and y=0..925 in the recording. No original game executable, art, audio or copied frames are added to this public repository.
+
+### Measured original-camera events
+
+| Video time | Visual evidence |
+| --- | --- |
+| ~26.88–27.063s | Close batting view; Pooh, Eeyore and ball visible. Target/HR/balls-left HUD pinned top-left. |
+| **27.080s** | Very wide/elevated field view appears **in about one recorded 60fps frame**. This is essentially a hard cut, **not** a slow seamless zoom. |
+| ~27.1–29.5s | Continuous travel over a large mapped field; bases/mound/dirt/grass, fence and trees move across frame under the flying ball. Much more than enlargement of one background. |
+| ~29.6s | “Home Run” and measured `114.0m` appear over the distant field. HR count increments, HUD stays pinned. |
+| ~29.6–31.6s | Result is held over the outfield view for about two seconds. |
+| ~31.6–31.97s | Short black fade and return to batter view, then next pitch. |
+| ~34.30–34.45s | Second contact and fast switch to a wide field view. |
+| ~34.5–36.7s | Camera scrolls through grass, dirt/hedge landmarks while following the ball. |
+| ~36.8–37.1s | Orange “HIT” result appears against the mapped field and is held. |
+
+### Interpretation and requested compromise
+
+**Confirmed:** The original has **two distinct spatial views**: a close batting composition and a broad outfield **travel map**. It cuts between them almost instantly, then tracks the ball over several seconds as recognizable terrain moves. HUD remains fixed. The later result-to-batter transition uses a short dark fade. Therefore the previous claim “the original smoothly pans the same single batting background” was **incorrect**.
+
+The user earlier rejected abrupt cut and cheap 1.25× static-background zoom, and asked for continuity. Thus a **brief 180–240ms dissolve to a purpose-made original baseball outfield flyover**, then a true horizontally/vertically scrolling map following the ball, is an **intentional adaptation** rather than a literal copy of the original's 1-frame cut. Keep an anchored baseball and fixed HUD, show the result after reaching its landing point, and blend back before next pitch.
+
+Do not use the original's original art as a code asset; create original Tokyo-Dome-inspired graphics. Preserve accepted R3 pitch speed, delayed mouse-follow, contact rules and stage flow. Time values above are approximate, sourced from video frames, not source-code internals.
+
+**Research gate now:** `VIDEO_PRIMARY_OBSERVED / TIMELINE_ESTIMATED / CAMERA_IMPLEMENTATION_CANDIDATE`. Any previous “VIDEO_MOTION_NOT_YET_OBSERVED” text below is retained as **historical, superseded** documentation.
