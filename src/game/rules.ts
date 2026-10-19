@@ -166,9 +166,63 @@ export function stagePoints(records: PitchRecord[], cleared: boolean): number {
 }
 // Cursor following is frame-time independent (exponential smoothing).
 export function followBat(current: number, target: number, elapsedMs: number, level: number): number {
-  const response = 0.0025 + (level - 1) * 0.00085;
+  // Deliberately slow at Lv.1; Speed upgrades still shorten cursor lag.
+  const response = 0.00125 + (level - 1) * 0.00048;
   return current + (target - current) * (1 - Math.exp(-response * Math.max(0, elapsedMs)));
 }
+export interface FlightCameraView {
+  ballX: number;
+  ballY: number;
+  zoom: number;
+  cameraX: number;
+  cameraY: number;
+  landed: boolean;
+}
+
+// Ball and camera share one coordinate system with the batting view.
+// At impact the camera is exactly the original view (zoom=1, translation=0).
+// During the flight it eases toward the ball, then eases back before the next
+// pitch. No scene/background swap or teleport of the ball at contact.
+export function flightCameraView(input: {
+  launchX: number;
+  launchY: number;
+  landingX: number;
+  landingY: number;
+  arcHeight: number;
+  elapsedMs: number;
+  flightMs: number;
+  holdMs: number;
+  viewWidth: number;
+  viewHeight: number;
+}): FlightCameraView {
+  const { launchX, launchY, landingX, landingY, arcHeight,
+    elapsedMs, flightMs, holdMs, viewWidth, viewHeight } = input;
+  const smooth = (v: number): number => {
+    const t = clamp(v, 0, 1);
+    return t * t * (3 - 2 * t);
+  };
+  const duration = Math.max(1, flightMs);
+  const elapsed = Math.max(0, elapsedMs);
+  const t = clamp(elapsed / duration, 0, 1);
+  const ballX = launchX + (landingX - launchX) * t;
+  const ballY = launchY + (landingY - launchY) * t - Math.sin(Math.PI * t) * arcHeight;
+  const cameraIn = smooth((t - 0.04) / 0.54);
+  const cameraOut = 1 - smooth((elapsed - (duration + holdMs - 470)) / 470);
+  const strength = cameraIn * cameraOut;
+  const zoom = 1 + strength * 0.25;
+  // Clamp the tracked background within the viewport so zooming cannot reveal
+  // empty edges. The moving ball and ground remain in the same stage.
+  const cameraX = clamp(
+    viewWidth * (1 - zoom) / 2 - (ballX - viewWidth / 2) * strength * 0.62,
+    viewWidth * (1 - zoom), 0
+  );
+  const cameraY = clamp(
+    viewHeight * (1 - zoom) / 2 - (ballY - viewHeight * 0.52) * strength * 0.45,
+    viewHeight * (1 - zoom), 0
+  );
+  return { ballX, ballY, zoom, cameraX, cameraY, landed: t >= 1 };
+}
+
 export function pitchHorizontalX(motion: PitchMotion, startX: number, endX: number, progress: number): number {
   const p = clamp(progress, 0, 1);
   if (p === 1) return endX;
