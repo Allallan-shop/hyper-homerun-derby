@@ -6,7 +6,8 @@
     "pitcher_rookie": "",
     "pitcher_trickster": "",
     "pitcher_chaos": "",
-    "ball": ""
+    "ball": "",
+    "flight_field": "assets/flight-field.svg"
   },
   "sounds": {
     "bat_hit": "",
