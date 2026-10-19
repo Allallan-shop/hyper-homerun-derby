@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  addStageResult, battingSideSign, buyUpgrade, flightCameraView, followBat, formatTime, makeRun, pitchDuration, pitchHorizontalX,
+  addStageResult, battingSideSign, buyUpgrade, fieldFlyoverFrame, flightCameraView, followBat, formatTime, makeRun, pitchDuration, pitchHorizontalX,
   requiredHomeRuns, stagePoints, summarizeRun, swingContact, validateContent, weightedPick
 } from '../src/game/rules.ts';
 
@@ -160,4 +160,36 @@ test('seamless camera keeps the exact original frame at ball contact',()=>{
   assert.equal(returned.cameraY,0);
   assert.equal(returned.ballX,args.landingX);
   assert(Math.abs(returned.ballY-args.landingY)<0.00001);
+});
+
+test('R5 flight field starts at contact, scrolls across the stadium, and fades back',()=>{
+  const args={
+    launchX:485,launchY:448,direction:.48,distanceM:300,
+    outcome:'HR',flightMs:2200,holdMs:820,
+    viewWidth:960,viewHeight:600
+  };
+  const initial=fieldFlyoverFrame({...args,elapsedMs:0});
+  assert.equal(initial.ballX,args.launchX);
+  assert.equal(initial.ballY,args.launchY);
+  assert.equal(initial.alpha,0);
+  assert.equal(initial.landed,false);
+  const afterOneFrame=fieldFlyoverFrame({...args,elapsedMs:1000/60});
+  assert(afterOneFrame.alpha>=0&&afterOneFrame.alpha<.04);
+  assert(Math.abs(afterOneFrame.ballX-args.launchX)<10);
+  assert(Math.abs(afterOneFrame.ballY-args.launchY)<18);
+  const early=fieldFlyoverFrame({...args,elapsedMs:180});
+  assert(early.alpha>.85,'field should appear in a fast transition');
+  const midpoint=fieldFlyoverFrame({...args,elapsedMs:1100});
+  assert.equal(midpoint.alpha,1);
+  assert(midpoint.offsetY>initial.offsetY+300,
+    'field map needs to travel hundreds of pixels, not merely zoom');
+  assert(midpoint.ballY<midpoint.groundY);
+  const landed=fieldFlyoverFrame({...args,elapsedMs:args.flightMs});
+  assert.equal(landed.landed,true);
+  assert(Math.abs(landed.ballY-landed.groundY)<.0001);
+  const closing=fieldFlyoverFrame({...args,elapsedMs:args.flightMs+args.holdMs});
+  assert.equal(closing.alpha,0);
+  const hit=fieldFlyoverFrame({...args,outcome:'HIT',elapsedMs:args.flightMs});
+  assert(hit.offsetY<landed.offsetY,
+    'HIT should land infield/shallower than a HR');
 });
