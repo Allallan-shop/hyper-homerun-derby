@@ -337,13 +337,20 @@ export class DerbyScene extends Phaser.Scene {
     trail.clear();
     const t = clamp(flight.elapsed / flight.duration, 0, 1);
     const radius = Math.max(5, flight.launchRadius * (1 - t * 0.48));
+    // Keep the ball visible from the exact impact location throughout the
+    // initial background dissolve. Fade it out with the field on return.
+    const exitT = clamp(
+      (flight.elapsed - (flight.duration + MAX_FLIGHT_HOLD_MS - 340)) / 340,
+      0, 1
+    );
+    const ballAlpha = 1 - exitT * exitT * (3 - 2 * exitT);
     if (this.flightBallSprite) {
-      this.flightBallSprite.setVisible(true)
+      this.flightBallSprite.setVisible(true).setAlpha(ballAlpha)
         .setPosition(view.ballX, view.ballY)
         .setDisplaySize(radius * 2, radius * 2);
     } else {
-      trail.fillStyle(0xffffff, 1).fillCircle(view.ballX, view.ballY, radius);
-      trail.lineStyle(2, 0xdf4547, 0.95)
+      trail.fillStyle(0xffffff, ballAlpha).fillCircle(view.ballX, view.ballY, radius);
+      trail.lineStyle(2, 0xdf4547, 0.95 * ballAlpha)
         .strokeCircle(view.ballX, view.ballY, radius * 0.64);
     }
     if (t > 0.23 && t < 0.96) {
