@@ -43,6 +43,7 @@ const WIDTH = 960;
 const HEIGHT = 600;
 const PLATE_X = WIDTH / 2;
 const CONTACT_Y = 456;
+const PITCH_RELEASE_Y = 292;
 const MAX_FLIGHT_HOLD_MS = 820;
 
 export class DerbyScene extends Phaser.Scene {
@@ -107,13 +108,15 @@ export class DerbyScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(4);
 
     if (this.textures.exists(this.options.pitcher.imageId)) {
-      this.pitcherSprite = this.add.image(WIDTH / 2, 190, this.options.pitcher.imageId)
-        .setDisplaySize(110, 145);
+      this.pitcherSprite = this.add.image(WIDTH / 2, 306, this.options.pitcher.imageId)
+        // Mound in the Tokyo-Dome-inspired background is near y=345.
+        .setDisplaySize(94, 126);
       this.world.add(this.pitcherSprite);
     }
     if (this.textures.exists('batter')) {
-      this.batterSprite = this.add.image(this.batterBodyX(), 477, 'batter')
-        .setDisplaySize(165, 190).setFlipX(this.options.battingSide === 'right');
+      this.batterSprite = this.add.image(this.batterBodyX(), 465, 'batter')
+        // Feet near field bottom, while staying in the left batting box.
+        .setDisplaySize(194, 270).setFlipX(this.options.battingSide === 'right');
       this.world.add(this.batterSprite);
     }
 
@@ -244,7 +247,7 @@ export class DerbyScene extends Phaser.Scene {
         const visualProgress = clamp(progress, 0, 1);
         const bounce = pitch.plan.effect === 'bounce'
           ? Math.sin(visualProgress * Math.PI * 7) * 32 : 0;
-        const visualY = 258 + visualProgress * (CONTACT_Y - 258) + bounce;
+        const visualY = PITCH_RELEASE_Y + visualProgress * (CONTACT_Y - PITCH_RELEASE_Y) + bounce;
         const visualRadius = (7 + visualProgress * 10) *
           (pitch.plan.effect === 'shrink' && visualProgress > 0.5 ? 0.45 : 1);
         this.resolvePitch(record, contact.direction, ballX, visualY, visualRadius);
@@ -386,14 +389,14 @@ export class DerbyScene extends Phaser.Scene {
     const side = battingSideSign(this.options.battingSide);
     const bodyX = this.batterBodyX();
     if (!this.pitcherSprite) {
-      g.fillStyle(0xf1ce97, 1).fillCircle(PLATE_X, 171, 22);
-      g.fillStyle(0xe7e8e9, 1).fillRoundedRect(PLATE_X - 25, 192, 50, 72, 9);
-      g.fillStyle(0x203f62, 1).fillRect(PLATE_X - 30, 151, 60, 12);
+      g.fillStyle(0xf1ce97, 1).fillCircle(PLATE_X, 268, 17);
+      g.fillStyle(0xe7e8e9, 1).fillRoundedRect(PLATE_X - 20, 283, 40, 62, 8);
+      g.fillStyle(0x203f62, 1).fillRect(PLATE_X - 21, 254, 42, 9);
     }
     if (!this.batterSprite) {
-      g.fillStyle(0xf2d19b, 1).fillCircle(bodyX, 438, 27);
-      g.fillStyle(0xf5f7f8, 1).fillRoundedRect(bodyX - 30, 467, 60, 96, 12);
-      g.fillStyle(0x273d6b, 1).fillRect(bodyX - 28, 407, 56, 12);
+      g.fillStyle(0xf2d19b, 1).fillCircle(bodyX, 398, 26);
+      g.fillStyle(0xf5f7f8, 1).fillRoundedRect(bodyX - 31, 433, 62, 155, 12);
+      g.fillStyle(0x273d6b, 1).fillRect(bodyX - 30, 380, 60, 12);
     }
     if (this.batterSprite) this.batterSprite.setX(bodyX);
 
@@ -401,14 +404,23 @@ export class DerbyScene extends Phaser.Scene {
     const activeSwing = this.holding && age < 300;
     const rotation = activeSwing ? (Math.min(age / 300, 1) - .5) * .7 : 0;
     const batY = CONTACT_Y - (activeSwing ? Math.sin(Math.PI * clamp(age / 300, 0, 1)) * 10 : 0);
-    // The green sweet spot is centered on batX — the SAME x used for collision.
-    // Mirror the handle toward the batter; neither hitbox nor timing is mirrored.
-    g.lineStyle(21, 0x80552d, 1);
-    g.lineBetween(this.batX + side * 93, batY + 21,
-      this.batX - side * 64, batY - 7 + rotation * 31);
-    g.lineStyle(16, 0x70e9bb, 1);
-    g.lineBetween(this.batX - 20, batY, this.batX + 20, batY);
-    g.lineStyle(2, 0xeafff5, 1).strokeCircle(this.batX, batY, 16);
+    // Never draw a second full wooden bat on top of the illustrated batter
+    // (the art already holds one). Show only a transient swing trail, with
+    // the green sweet spot still exactly aligned to the collision center.
+    if (!this.batterSprite) {
+      g.lineStyle(19, 0x80552d, 1);
+      g.lineBetween(this.batX + side * 94, batY + 21,
+        this.batX - side * 64, batY - 7 + rotation * 31);
+    } else if (activeSwing) {
+      const trailAlpha = 0.35 + 0.32 * Math.sin(Math.PI * clamp(age / 300, 0, 1));
+      g.lineStyle(10, 0xf0d19b, trailAlpha);
+      g.lineBetween(bodyX + side * 49, 416, this.batX, batY);
+      g.lineStyle(3, 0xfff3d5, trailAlpha);
+      g.lineBetween(bodyX + side * 49, 416, this.batX, batY);
+    }
+    g.lineStyle(13, 0x70e9bb, this.batterSprite ? 0.58 : 1);
+    g.lineBetween(this.batX - 18, batY, this.batX + 18, batY);
+    g.lineStyle(2, 0xeafff5, 0.9).strokeCircle(this.batX, batY, 16);
 
     // Continue drawing the batting stadium through contact. The camera is
     // animated on the shared world layer, never replaced by a different field.
@@ -423,7 +435,7 @@ export class DerbyScene extends Phaser.Scene {
       const effect = this.pitch.plan.effect;
       // No vertical strike coordinate: the bounce is presentation only.
       const wobbleY = effect === 'bounce' ? Math.sin(p * Math.PI * 7) * 32 : 0;
-      const y = 258 + p * (CONTACT_Y - 258) + wobbleY;
+      const y = PITCH_RELEASE_Y + p * (CONTACT_Y - PITCH_RELEASE_Y) + wobbleY;
       const radius = (7 + p * 10) * (effect === 'shrink' && p > 0.5 ? .45 : 1);
       const visible = !(effect === 'vanish' && p > .42 && p < .79);
       if (visible) {
