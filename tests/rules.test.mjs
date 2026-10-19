@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  addStageResult, battingSideSign, buyUpgrade, followBat, formatTime, makeRun, pitchHorizontalX,
+  addStageResult, battingSideSign, buyUpgrade, flightCameraView, followBat, formatTime, makeRun, pitchDuration, pitchHorizontalX,
   requiredHomeRuns, stagePoints, summarizeRun, swingContact, validateContent, weightedPick
 } from '../src/game/rules.ts';
 
@@ -109,4 +109,55 @@ test('batting stance is left by default and both orientations share the same x p
   validateContent(config);
   assert(config.stages.every(s => s.horizontalSpread <= config.gameplay.strikeHalfWidth));
   assert(config.stages[0].pitchDurationMs < 1500);
+});
+
+test('first swing response is slower while speed upgrades still matter',()=>{
+  const slow=followBat(480,600,100,1);
+  const fast=followBat(480,600,100,9);
+  assert(slow-480 < 18, 'base movement should not snap toward the cursor');
+  assert(fast > slow + 25, 'speed upgrades should remain meaningful');
+  assert(fast < 600);
+});
+
+test('faster standard pitches retain contrast with the changeup',()=>{
+  const cfg=JSON.parse(readFileSync(new URL('../public/config/game-content.json', import.meta.url),'utf8'));
+  const expected=[870,740,630];
+  cfg.stages.forEach((stage,index)=>{
+    assert.equal(stage.pitchDurationMs,expected[index]);
+    const base=pitchDuration(stage,cfg.modes[0],'straight');
+    const offspeed=pitchDuration(stage,cfg.modes[0],'changeup');
+    assert(offspeed > base * 1.5);
+  });
+});
+
+test('seamless camera keeps the exact original frame at ball contact',()=>{
+  const args={
+    launchX: 498, launchY: 455, landingX: 625, landingY: 209,
+    arcHeight: 185, flightMs: 2000, holdMs: 820,
+    viewWidth: 960, viewHeight: 600
+  };
+  const impact=flightCameraView({...args,elapsedMs:0});
+  assert.equal(impact.ballX,args.launchX);
+  assert.equal(impact.ballY,args.launchY);
+  assert.equal(impact.zoom,1);
+  assert.equal(impact.cameraX,0);
+  assert.equal(impact.cameraY,0);
+  assert.equal(impact.landed,false);
+  const near=flightCameraView({...args,elapsedMs:17});
+  assert(Math.abs(near.cameraX)<1&&Math.abs(near.cameraY)<1);
+  assert(near.ballY<impact.ballY);
+  const mid=flightCameraView({...args,elapsedMs:1100});
+  assert(mid.zoom>1.05&&mid.zoom<=1.25);
+  assert(mid.cameraX<=0&&mid.cameraX>=960*(1-mid.zoom));
+  assert(mid.cameraY<=0&&mid.cameraY>=600*(1-mid.zoom));
+  const landing=flightCameraView({...args,elapsedMs:args.flightMs});
+  assert.equal(landing.landed,true);
+  assert.equal(landing.ballX,args.landingX);
+  assert(Math.abs(landing.ballY-args.landingY)<0.00001);
+  const returned=flightCameraView({...args,elapsedMs:args.flightMs+args.holdMs});
+  assert.equal(returned.zoom,1);
+  assert.equal(returned.cameraX,0);
+  assert.equal(returned.cameraY,0);
+  assert.equal(returned.ballX,args.landingX);
+  assert(Math.abs(returned.ballY-args.landingY)<0.00001);
 });
