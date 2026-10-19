@@ -56,3 +56,12 @@ Preserve R3 hit logic, stage flow and timers. Do *not* try to fix depth by furth
 
 `ORIGINAL_STILLS_REVIEWED / VIDEO_MOTION_NOT_VERIFIED / R3_SYSTEM_PROVISIONAL_PASS / R4_ART_INCOMPLETE`  
 Draft PR #2 remains unmerged. No public deployment. Update this document with timecoded evidence before implementing a reference-driven R5 camera change.
+
+
+## Original playable reference confirmation (user observation, 2026-10-19)
+
+- The user personally opened the [Japanese Ruffle browser release](https://game-ac.com/swf/homerun.html), linked from [the public game-ac page](https://game-ac.com/free/sports/pooh-home-run-derby/), and reported **“本家そのもの” (it is the original itself)**. Treat this as a first-hand confirmation of a usable primary gameplay reference, not merely another descriptive article or still image.
+- The site itself describes the page as a Ruffle revival of the Flash game. We can stop looking for unrelated interpretations of the rules or edited gameplay footage as our primary baseline.
+- **Limitation unchanged:** the current chat's browser connection is read-only and cannot click/play/record the Ruffle canvas; public-web retrieval gives HTML/text but not the on-screen frame sequence. This confirmation does **not** grant us measured camera transitions or video-frame timing.
+- Next research input, if direct playable browser control remains unavailable: **one short 10–20-second recording** of a successful hit including contact → flight → landing/result → return to next pitch (optionally another missed hit). Can be captured with Windows Xbox Game Bar; no game extraction or source copying required.
+- Once video bytes are available, extract a handful of representative frames, record a contact/camera/ball/field/HUD timeline, and implement one restrained source change while keeping R3 gameplay and user-approved scope unchanged. Do not copy source images or software assets into the public repo.
