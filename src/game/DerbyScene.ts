@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import {
-  clamp, followBat, pitchDuration, pitchHorizontalX, requiredHomeRuns,
+  clamp, flightCameraView, followBat, pitchDuration, pitchHorizontalX, requiredHomeRuns,
   swingContact, weightedPick, battingSideSign,
   type AssetManifest, type BattingSide, type Mode, type PitchRecord, type Pitcher,
   type Stage, type WeightedPitch, type UpgradeId
@@ -19,6 +19,12 @@ interface FlightAnimation {
   direction: number;
   distanceM: number;
   duration: number;
+  launchX: number;
+  launchY: number;
+  landingX: number;
+  landingY: number;
+  launchRadius: number;
+  arcHeight: number;
 }
 export interface MatchOptions {
   stage: Stage;
@@ -42,6 +48,9 @@ const MAX_FLIGHT_HOLD_MS = 820;
 export class DerbyScene extends Phaser.Scene {
   private options: MatchOptions;
   private gfx!: Phaser.GameObjects.Graphics;
+  // All stage objects move as one camera layer; HUD is fixed on screen.
+  private world!: Phaser.GameObjects.Container;
+  private hudGraphics!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Text;
   private prompt!: Phaser.GameObjects.Text;
   private pitcherSprite: Phaser.GameObjects.Image | null = null;
@@ -84,6 +93,10 @@ export class DerbyScene extends Phaser.Scene {
         .setDisplaySize(WIDTH, HEIGHT).setDepth(-2);
     }
     this.gfx = this.add.graphics();
+    this.world = this.add.container(0, 0);
+    if (this.backgroundSprite) this.world.add(this.backgroundSprite);
+    this.world.add(this.gfx);
+    this.hudGraphics = this.add.graphics().setDepth(5);
     this.hud = this.add.text(27, 20, '', {
       color: '#ffffff', fontSize: '24px', fontFamily: 'sans-serif',
       stroke: '#0d1c26', strokeThickness: 4
@@ -95,16 +108,18 @@ export class DerbyScene extends Phaser.Scene {
 
     if (this.textures.exists(this.options.pitcher.imageId)) {
       this.pitcherSprite = this.add.image(WIDTH / 2, 190, this.options.pitcher.imageId)
-        .setDisplaySize(110, 145).setDepth(2);
+        .setDisplaySize(110, 145);
+      this.world.add(this.pitcherSprite);
     }
     if (this.textures.exists('batter')) {
       this.batterSprite = this.add.image(this.batterBodyX(), 477, 'batter')
-        .setDisplaySize(165, 190).setFlipX(this.options.battingSide === 'right').setDepth(2);
+        .setDisplaySize(165, 190).setFlipX(this.options.battingSide === 'right');
+      this.world.add(this.batterSprite);
     }
 
     if (this.textures.exists('ball')) {
-      this.ballSprite = this.add.image(0, 0, 'ball')
-        .setDepth(4).setVisible(false);
+      this.ballSprite = this.add.image(0, 0, 'ball').setVisible(false);
+      this.world.add(this.ballSprite);
     }
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       this.aimX = this.limitAim(pointer.x);
@@ -171,7 +186,9 @@ export class DerbyScene extends Phaser.Scene {
     // Cap large frame jumps so a minimized page doesn't silently eat all pitches.
     const dt = clamp(delta, 0, 55);
     this.clock += dt;
-    this.batX = followBat(this.batX, this.aimX, dt, this.options.upgrades.speed);
+    if (!this.flight) {
+      this.batX = followBat(this.batX, this.aimX, dt, this.options.upgrades.speed);
+    }
 
     if (this.flight) {
       this.flight.elapsed += dt;
@@ -224,7 +241,13 @@ export class DerbyScene extends Phaser.Scene {
           timingErrorMs: swingAge - 152,
           distanceM: contact.distanceM
         };
-        this.resolvePitch(record, contact.direction);
+        const visualProgress = clamp(progress, 0, 1);
+        const bounce = pitch.plan.effect === 'bounce'
+          ? Math.sin(visualProgress * Math.PI * 7) * 32 : 0;
+        const visualY = 258 + visualProgress * (CONTACT_Y - 258) + bounce;
+        const visualRadius = (7 + visualProgress * 10) *
+          (pitch.plan.effect === 'shrink' && visualProgress > 0.5 ? 0.45 : 1);
+        this.resolvePitch(record, contact.direction, ballX, visualY, visualRadius);
       }
     }
     if (this.pitch && progress > 1.11) {
@@ -238,17 +261,25 @@ export class DerbyScene extends Phaser.Scene {
     this.render();
   }
 
-  private resolvePitch(record: PitchRecord, direction: number): void {
+  private resolvePitch(
+    record: PitchRecord, direction: number,
+    launchX = this.batX, launchY = CONTACT_Y, launchRadius = 16
+  ): void {
     this.records.push(record);
     this.pitch = null;
     this.swingAt = null;
     this.holding = false;
     this.nextPitchDelay = 650;
     if (['HR', 'HIT', 'FOUL'].includes(record.result)) {
+      const horizontalTravel = Math.min(record.distanceM * 0.85, 340);
       this.flight = {
         elapsed: 0, result: record.result, direction,
         distanceM: record.distanceM,
-        duration: clamp(1150 + record.distanceM * 3.1, 1600, 2850)
+        duration: clamp(1150 + record.distanceM * 3.1, 1600, 2850),
+        launchX, launchY, launchRadius,
+        landingX: clamp(PLATE_X + direction * horizontalTravel, 85, WIDTH - 85),
+        landingY: record.result === 'HR' ? 209 : record.result === 'FOUL' ? 315 : 343,
+        arcHeight: clamp(90 + record.distanceM * 0.32, 110, 225)
       };
       this.playIfAvailable(record.result === 'HR' ? 'homerun' : record.result === 'FOUL' ? 'foul' : 'bat_hit');
     }
@@ -258,78 +289,57 @@ export class DerbyScene extends Phaser.Scene {
     this.latestMessage = record.distanceM ? `${word}  ${record.distanceM.toLocaleString('ja-JP')}m` : word;
   }
 
-  // Review-friendly ball trail camera: the world moves under the tracked
-  // ball; every contacted ball is followed until the exact landing marker.
-  // This is intentionally arcade geometry, not a new 3D physics engine.
+  // One continuous stadium shot: at impact both world and ball are at the
+  // very same pixels as the pitching view; then the shared world layer pans
+  // and zooms gradually toward the ball and returns before the next pitch.
   private renderFlight(g: Phaser.GameObjects.Graphics): void {
     const flight = this.flight;
     if (!flight) return;
+    const view = flightCameraView({
+      launchX: flight.launchX,
+      launchY: flight.launchY,
+      landingX: flight.landingX,
+      landingY: flight.landingY,
+      arcHeight: flight.arcHeight,
+      elapsedMs: flight.elapsed,
+      flightMs: flight.duration,
+      holdMs: MAX_FLIGHT_HOLD_MS,
+      viewWidth: WIDTH,
+      viewHeight: HEIGHT
+    });
+    // Transforms the SAME stadium, pitcher and batter; no replacement field,
+    // no instant hard cut to a separate "tracking screen".
+    this.world.setScale(view.zoom);
+    this.world.setPosition(view.cameraX, view.cameraY);
     const t = clamp(flight.elapsed / flight.duration, 0, 1);
-    const worldDistance = Math.min(flight.distanceM, 1500) * 2.15;
-    const shotDirection = clamp(flight.direction, -1, 1);
-    const currentWorldX = PLATE_X + shotDirection * worldDistance * 0.63 * t;
-    const currentWorldY = -worldDistance * t;
-    const cameraX = currentWorldX - PLATE_X;
-    const cameraY = currentWorldY - 355;
-
-    // Tracking-camera field background with moving stripe/fence references.
-    g.fillStyle(0x173349, 1).fillRect(0, 0, WIDTH, HEIGHT);
-    g.fillStyle(0x347958, 1).fillRect(0, 170, WIDTH, HEIGHT - 170);
-    for (let k = -20; k < 24; k++) {
-      const y = -k * 96 - cameraY;
-      if (y > 175 && y < HEIGHT + 25) {
-        g.lineStyle(2, k % 2 === 0 ? 0x4a9667 : 0x286a4d, 0.75);
-        g.lineBetween(0, y, WIDTH, y);
-      }
-    }
-    const fenceY = -320 - cameraY;
-    if (fenceY > 150 && fenceY < HEIGHT + 80) {
-      g.lineStyle(16, 0x164d49, 1).lineBetween(0, fenceY, WIDTH, fenceY);
-      g.lineStyle(4, 0xe9d565, 0.95).lineBetween(0, fenceY - 9, WIDTH, fenceY - 9);
-    }
-    // References on the field slide in the opposite direction of the ball,
-    // making the camera's follow movement immediately visible.
-    const moundX = PLATE_X - cameraX;
-    const moundY = -125 - cameraY;
-    if (moundY > 130 && moundY < HEIGHT + 30) {
-      g.fillStyle(0xba926c, 0.88).fillEllipse(moundX, moundY, 88, 36);
-    }
-
-    const targetWorldX = PLATE_X + shotDirection * worldDistance * 0.63;
-    const targetWorldY = -worldDistance;
-    const targetX = targetWorldX - cameraX;
-    const targetY = targetWorldY - cameraY;
-    if (t > 0.45) {
-      const alpha = t < 1 ? 0.35 : 1;
-      g.lineStyle(4, flight.result === 'HR' ? 0xff6772 : 0xf3e393, alpha)
-        .strokeCircle(targetX, targetY, 19);
-      g.lineStyle(2, 0xffffff, alpha).lineBetween(targetX - 9, targetY, targetX + 9, targetY);
-      g.lineStyle(2, 0xffffff, alpha).lineBetween(targetX, targetY - 9, targetX, targetY + 9);
-    }
-
-    const height = Math.sin(Math.PI * t) * Math.min(210, 90 + flight.distanceM * 0.26);
-    const ballX = PLATE_X;
-    const ballY = 355 - height;
-    const radius = 14 - t * 4;
+    const radius = Math.max(5, flight.launchRadius * (1 - t * 0.48));
     if (this.ballSprite) {
-      this.ballSprite.setVisible(true).setPosition(ballX, ballY)
+      this.ballSprite.setVisible(true)
+        .setPosition(view.ballX, view.ballY)
         .setDisplaySize(radius * 2, radius * 2);
     } else {
-      g.fillStyle(0xffffff, 1).fillCircle(ballX, ballY, radius);
-      g.lineStyle(2, 0xdf4547, 0.95).strokeCircle(ballX, ballY, radius * 0.64);
+      g.fillStyle(0xffffff, 1).fillCircle(view.ballX, view.ballY, radius);
+      g.lineStyle(2, 0xdf4547, 0.95).strokeCircle(view.ballX, view.ballY, radius * 0.64);
     }
-    g.fillStyle(0x13293c, .87).fillRoundedRect(245, 451, 470, 112, 18);
-    this.hud.setText(`打球結果: ${flight.result}    ${flight.distanceM.toLocaleString('ja-JP')}m`);
-    if (t >= 1) {
-      g.lineStyle(6, 0xffd86d, 1).strokeCircle(targetX, targetY, 27);
-      g.fillStyle(0xffedab, 0.92).fillCircle(targetX, targetY, 5);
+    if (t >= 0.72) {
+      const alpha = clamp((t - 0.72) / 0.22, 0, 1);
+      g.lineStyle(view.landed ? 5 : 3,
+        flight.result === 'HR' ? 0xff6571 : 0xffe09d, alpha)
+        .strokeCircle(flight.landingX, flight.landingY, view.landed ? 26 : 17);
+      g.lineStyle(2, 0xfbfdfd, alpha)
+        .lineBetween(flight.landingX - 9, flight.landingY,
+          flight.landingX + 9, flight.landingY);
+      g.lineStyle(2, 0xfbfdfd, alpha)
+        .lineBetween(flight.landingX, flight.landingY - 9,
+          flight.landingX, flight.landingY + 9);
     }
-    // Reuse the existing result text for final impact and distance.
-    // No new menu, animation system or expensive camera physics is needed.
-    this.prompt.setY(154);
-    this.prompt.setText(t >= 1
+    this.hud.setText(
+      `打球結果 ${flight.result}    ${flight.distanceM.toLocaleString('ja-JP')}m`
+    );
+    this.prompt.setY(154).setText(view.landed
       ? `着弾！ ${flight.result} / ${flight.distanceM.toLocaleString('ja-JP')}m`
-      : `打球追跡中… ${flight.distanceM.toLocaleString('ja-JP')}m`);
+      : `打球を追跡中… ${flight.distanceM.toLocaleString('ja-JP')}m`
+    );
   }
 
   private renderPitchHistory(g: Phaser.GameObjects.Graphics): void {
@@ -353,14 +363,9 @@ export class DerbyScene extends Phaser.Scene {
     const g = this.gfx;
     if (!g) return;
     g.clear();
-    if (this.backgroundSprite) this.backgroundSprite.setVisible(!this.flight);
-    if (this.pitcherSprite) this.pitcherSprite.setVisible(!this.flight);
-    if (this.batterSprite) this.batterSprite.setVisible(!this.flight);
+    this.hudGraphics.clear();
     if (this.ballSprite) this.ballSprite.setVisible(false);
-    if (this.flight) {
-      this.renderFlight(g);
-      return;
-    }
+    if (!this.flight) this.world.setScale(1).setPosition(0, 0);
     if (!this.backgroundSprite) {
       g.fillStyle(0x1d3748, 1).fillRect(0, 0, WIDTH, HEIGHT);
       // Fallback indoor ballpark until approved Tokyo-Dome-inspired artwork
@@ -405,6 +410,13 @@ export class DerbyScene extends Phaser.Scene {
     g.lineBetween(this.batX - 20, batY, this.batX + 20, batY);
     g.lineStyle(2, 0xeafff5, 1).strokeCircle(this.batX, batY, 16);
 
+    // Continue drawing the batting stadium through contact. The camera is
+    // animated on the shared world layer, never replaced by a different field.
+    if (this.flight) {
+      this.renderFlight(g);
+      this.renderPitchHistory(this.hudGraphics);
+      return;
+    }
     if (this.pitch) {
       const p = clamp(this.pitch.elapsed / this.pitch.duration, 0, 1);
       const x = pitchHorizontalX(this.pitch.plan.type, PLATE_X, this.pitch.endX, p);
@@ -427,7 +439,7 @@ export class DerbyScene extends Phaser.Scene {
         }
       }
     }
-    this.renderPitchHistory(g);
+    this.renderPitchHistory(this.hudGraphics);
     const hrs = this.records.filter(x => x.result === 'HR').length;
     const required = requiredHomeRuns(this.options.stage, this.options.mode);
     const remaining = this.options.stage.totalPitches - this.records.length;
