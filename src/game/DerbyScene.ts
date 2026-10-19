@@ -119,6 +119,14 @@ export class DerbyScene extends Phaser.Scene {
       const field = this.add.graphics().fillStyle(0x3b8b57, 1)
         .fillRect(0, 0, 2200, 2400);
       this.flightLayer.add(field);
+      // Make asset-loading failures obvious during R5 review. Avoid treating
+      // this plain fallback as the intended scrolling-ballpark artwork.
+      this.flightLayer.add(this.add.text(1100, 1450,
+        'R5 飛行背景の読込失敗\npublic/assets/flight-field.svg を確認', {
+          fontFamily: 'sans-serif', fontSize: '66px',
+          color: '#ffffff', backgroundColor: '#8a2424',
+          align: 'center', padding: { x: 35, y: 22 }
+        }).setOrigin(0.5));
     }
     this.flightGraphics = this.add.graphics().setDepth(3);
     this.hudGraphics = this.add.graphics().setDepth(5);
