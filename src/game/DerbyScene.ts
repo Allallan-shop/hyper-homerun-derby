@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import {
-  clamp, flightCameraView, followBat, pitchDuration, pitchHorizontalX, requiredHomeRuns,
+  clamp, fieldFlyoverFrame, followBat, pitchDuration, pitchHorizontalX, requiredHomeRuns,
   swingContact, weightedPick, battingSideSign,
   type AssetManifest, type BattingSide, type Mode, type PitchRecord, type Pitcher,
   type Stage, type WeightedPitch, type UpgradeId
@@ -51,6 +51,9 @@ export class DerbyScene extends Phaser.Scene {
   private gfx!: Phaser.GameObjects.Graphics;
   // All stage objects move as one camera layer; HUD is fixed on screen.
   private world!: Phaser.GameObjects.Container;
+  private flightLayer!: Phaser.GameObjects.Container;
+  private flightGraphics!: Phaser.GameObjects.Graphics;
+  private flightBallSprite: Phaser.GameObjects.Image | null = null;
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Text;
   private prompt!: Phaser.GameObjects.Text;
@@ -86,6 +89,8 @@ export class DerbyScene extends Phaser.Scene {
     for (const [key, path] of Object.entries(this.options.assets.sounds ?? {})) {
       if (path) this.load.audio(key, new URL(path, document.baseURI).href);
     }
+    // Own original wide-field art, independent of the optional R4 bitmap pack.
+    this.load.svg('flight_field', new URL('assets/flight-field.svg', document.baseURI).href);
   }
 
   create(): void {
@@ -97,6 +102,17 @@ export class DerbyScene extends Phaser.Scene {
     this.world = this.add.container(0, 0);
     if (this.backgroundSprite) this.world.add(this.backgroundSprite);
     this.world.add(this.gfx);
+    this.flightLayer = this.add.container(0, 0).setDepth(2).setAlpha(0);
+    if (this.textures.exists('flight_field')) {
+      this.flightLayer.add(this.add.image(1100, 1200, 'flight_field')
+        .setDisplaySize(2200, 2400));
+    } else {
+      // Fallback if the flyover SVG could not be loaded.
+      const field = this.add.graphics().fillStyle(0x3b8b57, 1)
+        .fillRect(0, 0, 2200, 2400);
+      this.flightLayer.add(field);
+    }
+    this.flightGraphics = this.add.graphics().setDepth(3);
     this.hudGraphics = this.add.graphics().setDepth(5);
     this.hud = this.add.text(27, 20, '', {
       color: '#ffffff', fontSize: '24px', fontFamily: 'sans-serif',
@@ -123,6 +139,9 @@ export class DerbyScene extends Phaser.Scene {
     if (this.textures.exists('ball')) {
       this.ballSprite = this.add.image(0, 0, 'ball').setVisible(false);
       this.world.add(this.ballSprite);
+      // Separate screen-space sprite for the tracked ball during flyover.
+      this.flightBallSprite = this.add.image(0, 0, 'ball')
+        .setDepth(3).setVisible(false);
     }
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       this.aimX = this.limitAim(pointer.x);
@@ -292,49 +311,54 @@ export class DerbyScene extends Phaser.Scene {
     this.latestMessage = record.distanceM ? `${word}  ${record.distanceM.toLocaleString('ja-JP')}m` : word;
   }
 
-  // One continuous stadium shot: at impact both world and ball are at the
-  // very same pixels as the pitching view; then the shared world layer pans
-  // and zooms gradually toward the ball and returns before the next pitch.
-  private renderFlight(g: Phaser.GameObjects.Graphics): void {
+  // Video-grounded R5: the original cuts in one 60fps frame to a wide field
+  // and follows the ball across landmarks. Our game preserves the user's
+  // smoother feel with a 220ms dissolve while using a real 2200x2400 field
+  // flyover and its changing scenery instead of zooming one static picture.
+  private renderFlight(_g: Phaser.GameObjects.Graphics): void {
     const flight = this.flight;
     if (!flight) return;
-    const view = flightCameraView({
+    const view = fieldFlyoverFrame({
       launchX: flight.launchX,
       launchY: flight.launchY,
-      landingX: flight.landingX,
-      landingY: flight.landingY,
-      arcHeight: flight.arcHeight,
+      direction: flight.direction,
+      distanceM: flight.distanceM,
+      outcome: flight.result as 'HR' | 'HIT' | 'FOUL',
       elapsedMs: flight.elapsed,
       flightMs: flight.duration,
       holdMs: MAX_FLIGHT_HOLD_MS,
       viewWidth: WIDTH,
       viewHeight: HEIGHT
     });
-    // Transforms the SAME stadium, pitcher and batter; no replacement field,
-    // no instant hard cut to a separate "tracking screen".
-    this.world.setScale(view.zoom);
-    this.world.setPosition(view.cameraX, view.cameraY);
+    this.world.setAlpha(1 - view.alpha);
+    this.flightLayer.setAlpha(view.alpha);
+    this.flightLayer.setPosition(view.offsetX, view.offsetY);
+    const trail = this.flightGraphics;
+    trail.clear();
     const t = clamp(flight.elapsed / flight.duration, 0, 1);
     const radius = Math.max(5, flight.launchRadius * (1 - t * 0.48));
-    if (this.ballSprite) {
-      this.ballSprite.setVisible(true)
+    if (this.flightBallSprite) {
+      this.flightBallSprite.setVisible(true)
         .setPosition(view.ballX, view.ballY)
         .setDisplaySize(radius * 2, radius * 2);
     } else {
-      g.fillStyle(0xffffff, 1).fillCircle(view.ballX, view.ballY, radius);
-      g.lineStyle(2, 0xdf4547, 0.95).strokeCircle(view.ballX, view.ballY, radius * 0.64);
+      trail.fillStyle(0xffffff, 1).fillCircle(view.ballX, view.ballY, radius);
+      trail.lineStyle(2, 0xdf4547, 0.95)
+        .strokeCircle(view.ballX, view.ballY, radius * 0.64);
+    }
+    if (t > 0.23 && t < 0.96) {
+      // Shadow on the scrolling field gives an immediate sense of altitude.
+      trail.fillStyle(0x0d2d23, 0.25 * view.alpha)
+        .fillEllipse(view.groundX, view.groundY, 22, 9);
     }
     if (t >= 0.72) {
-      const alpha = clamp((t - 0.72) / 0.22, 0, 1);
-      g.lineStyle(view.landed ? 5 : 3,
-        flight.result === 'HR' ? 0xff6571 : 0xffe09d, alpha)
-        .strokeCircle(flight.landingX, flight.landingY, view.landed ? 26 : 17);
-      g.lineStyle(2, 0xfbfdfd, alpha)
-        .lineBetween(flight.landingX - 9, flight.landingY,
-          flight.landingX + 9, flight.landingY);
-      g.lineStyle(2, 0xfbfdfd, alpha)
-        .lineBetween(flight.landingX, flight.landingY - 9,
-          flight.landingX, flight.landingY + 9);
+      const markerAlpha = clamp((t - 0.72) / 0.24, 0, 1) * view.alpha;
+      trail.lineStyle(view.landed ? 5 : 3,
+        flight.result === 'HR' ? 0xff6571 : 0xffe09d, markerAlpha)
+        .strokeCircle(view.groundX, view.groundY, view.landed ? 27 : 17);
+      trail.lineStyle(2, 0xfbfdfd, markerAlpha)
+        .lineBetween(view.groundX - 9, view.groundY,
+          view.groundX + 9, view.groundY);
     }
     this.hud.setText(
       `打球結果 ${flight.result}    ${flight.distanceM.toLocaleString('ja-JP')}m`
@@ -367,8 +391,13 @@ export class DerbyScene extends Phaser.Scene {
     if (!g) return;
     g.clear();
     this.hudGraphics.clear();
+    this.flightGraphics.clear();
     if (this.ballSprite) this.ballSprite.setVisible(false);
-    if (!this.flight) this.world.setScale(1).setPosition(0, 0);
+    if (this.flightBallSprite) this.flightBallSprite.setVisible(false);
+    if (!this.flight) {
+      this.world.setScale(1).setPosition(0, 0).setAlpha(1);
+      this.flightLayer.setAlpha(0);
+    }
     if (!this.backgroundSprite) {
       g.fillStyle(0x1d3748, 1).fillRect(0, 0, WIDTH, HEIGHT);
       // Fallback indoor ballpark until approved Tokyo-Dome-inspired artwork
