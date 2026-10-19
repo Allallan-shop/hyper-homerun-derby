@@ -84,13 +84,21 @@ export class DerbyScene extends Phaser.Scene {
 
   preload(): void {
     for (const [key, path] of Object.entries(this.options.assets.images ?? {})) {
-      if (path) this.load.image(key, new URL(path, document.baseURI).href);
+      if (key === 'flight_field' || !path) continue;
+      this.load.image(key, new URL(path, document.baseURI).href);
     }
     for (const [key, path] of Object.entries(this.options.assets.sounds ?? {})) {
       if (path) this.load.audio(key, new URL(path, document.baseURI).href);
     }
-    // Own original wide-field art, independent of the optional R4 bitmap pack.
-    this.load.svg('flight_field', new URL('assets/flight-field.svg', document.baseURI).href);
+    // The original wide field is replaceable in the same asset manifest as
+    // the pitcher, batter and ball. Older R4 manifests still work.
+    const flightPath = this.options.assets.images?.flight_field || 'assets/flight-field.svg';
+    const flightUrl = new URL(flightPath, document.baseURI).href;
+    if (flightPath.toLowerCase().endsWith('.svg')) {
+      this.load.svg('flight_field', flightUrl);
+    } else {
+      this.load.image('flight_field', flightUrl);
+    }
   }
 
   create(): void {
