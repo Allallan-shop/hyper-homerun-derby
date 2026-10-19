@@ -59,7 +59,7 @@
       "pitcherId": "rookie",
       "totalPitches": 10,
       "requiredHomeruns": 3,
-      "pitchDurationMs": 1250,
+      "pitchDurationMs": 870,
       "horizontalSpread": 55,
       "fenceDistance": 225,
       "pool": [
@@ -83,7 +83,7 @@
       "pitcherId": "trickster",
       "totalPitches": 18,
       "requiredHomeruns": 7,
-      "pitchDurationMs": 1070,
+      "pitchDurationMs": 740,
       "horizontalSpread": 75,
       "fenceDistance": 245,
       "pool": [
@@ -119,7 +119,7 @@
       "pitcherId": "chaos",
       "totalPitches": 28,
       "requiredHomeruns": 15,
-      "pitchDurationMs": 930,
+      "pitchDurationMs": 630,
       "horizontalSpread": 92,
       "fenceDistance": 265,
       "pool": [
