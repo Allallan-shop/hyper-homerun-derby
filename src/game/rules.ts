@@ -223,6 +223,81 @@ export function flightCameraView(input: {
   return { ballX, ballY, zoom, cameraX, cameraY, landed: t >= 1 };
 }
 
+export interface FieldFlyoverFrame {
+  offsetX: number;
+  offsetY: number;
+  ballX: number;
+  ballY: number;
+  groundX: number;
+  groundY: number;
+  alpha: number;
+  landed: boolean;
+}
+
+// R5 original-video-inspired camera. The original has an immediate cut to a
+// *different spatial field*, followed by multi-second travel over landmarks.
+// For this game we ease the view in over 220ms to avoid a jarring hard cut,
+// but move across a large, original stadium field map (not just a 1.25x zoom).
+export function fieldFlyoverFrame(input: {
+  launchX: number;
+  launchY: number;
+  direction: number;
+  distanceM: number;
+  outcome: 'HR' | 'HIT' | 'FOUL';
+  elapsedMs: number;
+  flightMs: number;
+  holdMs: number;
+  viewWidth: number;
+  viewHeight: number;
+}): FieldFlyoverFrame {
+  const smooth = (value: number): number => {
+    const t = clamp(value, 0, 1);
+    return t * t * (3 - 2 * t);
+  };
+  const homeX = 1100, homeY = 2182;
+  const fieldWidth = 2200, fieldHeight = 2400;
+  const duration = Math.max(1, input.flightMs);
+  const elapsed = Math.max(0, input.elapsedMs);
+  const progress = clamp(elapsed / duration, 0, 1);
+  const targetY = input.outcome === 'HR'
+    ? 570 - clamp((input.distanceM - 225) * 0.25, -50, 200)
+    : input.outcome === 'FOUL' ? 1020
+    : clamp(1590 - input.distanceM * 2.5, 930, 1510);
+  const targetX = clamp(
+    homeX + clamp(input.direction, -1.1, 1.1) *
+      (input.outcome === 'FOUL' ? 760 : 475),
+    240, 1960
+  );
+  const worldBallX = homeX + (targetX - homeX) * progress;
+  const worldBallY = homeY + (targetY - homeY) * progress;
+  const initialX = input.launchX - homeX;
+  const initialY = input.launchY - homeY;
+  const targetOffsetX = input.viewWidth * 0.5 - worldBallX;
+  const targetOffsetY = input.viewHeight * 0.55 - worldBallY;
+  const follow = smooth((elapsed - 50) / 500);
+  const offsetX = clamp(
+    initialX + (targetOffsetX - initialX) * follow,
+    input.viewWidth - fieldWidth, 0
+  );
+  const offsetY = clamp(
+    initialY + (targetOffsetY - initialY) * follow,
+    input.viewHeight - fieldHeight, 0
+  );
+  const groundX = worldBallX + offsetX;
+  const groundY = worldBallY + offsetY;
+  const arc = Math.sin(progress * Math.PI) *
+    clamp(65 + input.distanceM * 0.23, 85, 190);
+  const fadeIn = smooth(elapsed / 220);
+  const fadeOut = smooth((elapsed - (duration + input.holdMs - 340)) / 340);
+  return {
+    offsetX, offsetY,
+    ballX: groundX, ballY: groundY - arc,
+    groundX, groundY,
+    alpha: fadeIn * (1 - fadeOut),
+    landed: progress >= 1
+  };
+}
+
 export function pitchHorizontalX(motion: PitchMotion, startX: number, endX: number, progress: number): number {
   const p = clamp(progress, 0, 1);
   if (p === 1) return endX;
