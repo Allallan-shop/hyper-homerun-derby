@@ -94,3 +94,17 @@ The user earlier rejected abrupt cut and cheap 1.25× static-background zoom, an
 Do not use the original's original art as a code asset; create original Tokyo-Dome-inspired graphics. Preserve accepted R3 pitch speed, delayed mouse-follow, contact rules and stage flow. Time values above are approximate, sourced from video frames, not source-code internals.
 
 **Research gate now:** `VIDEO_PRIMARY_OBSERVED / TIMELINE_ESTIMATED / CAMERA_IMPLEMENTATION_CANDIDATE`. Any previous “VIDEO_MOTION_NOT_YET_OBSERVED” text below is retained as **historical, superseded** documentation.
+
+## R5 camera candidate implemented (2026-10-19)
+
+**Evidence → implementation:** Based on the user's actual original-game MP4, not estimated from stills. The original switches to an overhead view around 27.080s (one 60fps frame), then travels over distinctive field landmarks through ~29.6s, showing result text for about two seconds, before fading back around 31.6–31.97s. A HIT follows the same flyover grammar at 34.45–37.1s. These are **video timestamps**, not measurements of the current build.
+
+**Code in Draft PR #2:**
+- New `public/assets/flight-field.svg` (2200×2400), created as **original unbranded indoor-dome baseball artwork**. It depicts the whole diamond, pitcher's mound, bases, mowing stripes, warning track, curved outfield wall and seating tiers. It is independent of the close-view optional R4 image pack, and contains no copied Winnie-the-Pooh assets.
+- `src/game/rules.ts`: pure `fieldFlyoverFrame` maps actual result/direction/distance to a scrolling position on this large field. It outputs projected ball/ground positions, field translations, land status and 220ms incoming / 340ms outgoing dissolve alpha. At impact `ballX/Y` exactly equal the hit point.
+- `src/game/DerbyScene.ts`: keeps batting world and a distinct wide **flightLayer**, both under a stable HUD. After contact the former fades into the latter over 220ms, the map translates by hundreds of pixels under a visible screen-space ball until the landing marker, then fades back before another pitch. No reliance on simply magnifying the single batting background.
+- `tests/rules.test.mjs`: adds deterministic camera boundary, map travel, landing and fade checks.
+
+**Intentional difference from the original:** The reference switches in one 60fps frame; this project uses a short dissolve because the user previously objected to abrupt scene swaps. The original reference should guide **staging**, not require copying a literal abrupt cut or third-party artwork.
+
+**Not yet accepted:** GitHub readback and deterministic numeric trajectory checks are **not** TypeScript build PASS or Human actual gameplay PASS. The visual reference storyboard and a Python-rendered **mock clip** were created in the conversation as review aids. They are *not* captured from a running Phaser build, and they should not be used as evidence for runtime correctness. Human review must assess whether the field flyover is visually satisfactory before further polish or source promotion.
