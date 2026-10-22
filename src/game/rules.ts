@@ -258,13 +258,20 @@ export function projectFieldLanding(
   const fair = Math.abs(direction) <= FAIR_DIRECTION_LIMIT;
   const sector = clamp(direction / FAIR_DIRECTION_LIMIT, -1, 1);
   const fenceX = HOME_X + sector * FENCE_HALF_WIDTH;
-  const fenceY = CENTER_FENCE_Y + (EDGE_FENCE_Y - CENTER_FENCE_Y) * sector * sector;
+  // Match the SVG's quadratic fence exactly: M0,590 Q1100,180 2200,590.
+  // A sector-only parabola would put HR landing points *inside* the painted
+  // warning track near the foul lines.
+  const fractionFromCenter = (fenceX - HOME_X) / 1100;
+  const fenceY = CENTER_FENCE_Y +
+    (EDGE_FENCE_Y - CENTER_FENCE_Y) * fractionFromCenter * fractionFromCenter;
   const fenceDistanceM = fenceDistanceAtDirection(centerFenceDistanceM, direction);
   const physicalRatio = Math.max(0, distanceM) / fenceDistanceM;
   // Beyond the fence, use a modest perspective compression so even a very
   // long HR remains visible in this deliberately simplified 2D field map.
+  // Real home runs must land clearly *beyond* the painted 70px-wide wall,
+  // even if they clear the nominal distance by only 1m.
   const visualRatio = physicalRatio <= 1 ? physicalRatio
-    : 1 + Math.min(0.11, (physicalRatio - 1) * 0.38);
+    : 1.04 + Math.min(0.08, (physicalRatio - 1) * 0.36);
   let worldX = HOME_X + (fenceX - HOME_X) * visualRatio;
   const worldY = HOME_Y + (fenceY - HOME_Y) * visualRatio;
   if (!fair) {
@@ -274,7 +281,7 @@ export function projectFieldLanding(
   }
   return {
     worldX, worldY, fenceX, fenceY, fenceDistanceM,
-    crossedFence: fair && distanceM >= fenceDistanceM, fair
+    crossedFence: fair && distanceM > fenceDistanceM, fair
   };
 }
 
