@@ -61,7 +61,7 @@
       "requiredHomeruns": 3,
       "pitchDurationMs": 870,
       "horizontalSpread": 55,
-      "fenceDistance": 225,
+      "fenceDistance": 122,
       "pool": [
         {
           "id": "fastball",
@@ -85,7 +85,7 @@
       "requiredHomeruns": 7,
       "pitchDurationMs": 740,
       "horizontalSpread": 75,
-      "fenceDistance": 245,
+      "fenceDistance": 122,
       "pool": [
         {
           "id": "fastball",
@@ -121,7 +121,7 @@
       "requiredHomeruns": 15,
       "pitchDurationMs": 630,
       "horizontalSpread": 92,
-      "fenceDistance": 265,
+      "fenceDistance": 122,
       "pool": [
         {
           "id": "fastball",
