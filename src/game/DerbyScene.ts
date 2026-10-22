@@ -525,6 +525,33 @@ export class DerbyScene extends Phaser.Scene {
 
     const side = battingSideSign(this.options.battingSide);
     const bodyX = this.batterBodyX();
+    const pFrame = pitcherFrameAt(this.nextPitchDelay, this.pitch?.elapsed ?? null);
+    const poseOffsets = [0,-2,-5,-2,8,10,5,0];
+    const poseRise = [0,1,-5,-8,-6,-3,0,0];
+    // Both frame strips and still-image fallbacks animate in time with the
+    // ACTUAL throw. This lives in presentation only, no pitching-time changes.
+    if (this.pitcherSprite) {
+      if (this.pitcherSprite.texture.key === 'pitcher_frames') {
+        this.pitcherSprite.setFrame(pFrame).setRotation(0);
+      } else {
+        const angles = [0,-.06,-.10,-.035,.10,.16,.07,0];
+        this.pitcherSprite.setRotation(angles[pFrame]);
+      }
+      this.pitcherSprite.setPosition(
+        PLATE_X + poseOffsets[pFrame], 306 + poseRise[pFrame]
+      );
+    }
+    // Depth and projected shadows stop animated cutouts looking as though they
+    // hover over the mound and the batter's box.
+    g.fillStyle(0x0a2830, 0.30).fillEllipse(PLATE_X, 361, 112, 17);
+    g.fillStyle(0x132c28, 0.30).fillEllipse(bodyX, 585, 163, 24);
+    if (pFrame >= 3 && pFrame <= 5) {
+      const trail = pFrame === 3 ? .45 : pFrame === 4 ? .95 : .46;
+      g.lineStyle(5, 0xffebbc, trail);
+      g.lineBetween(PLATE_X - 56, 273, PLATE_X + 12, 245);
+      g.lineStyle(3, 0xc7eaff, trail * 0.8);
+      g.lineBetween(PLATE_X - 62, 288, PLATE_X + 4, 256);
+    }
     if (!this.pitcherSprite) {
       g.fillStyle(0xf1ce97, 1).fillCircle(PLATE_X, 268, 17);
       g.fillStyle(0xe7e8e9, 1).fillRoundedRect(PLATE_X - 20, 283, 40, 62, 8);
@@ -535,10 +562,26 @@ export class DerbyScene extends Phaser.Scene {
       g.fillStyle(0xf5f7f8, 1).fillRoundedRect(bodyX - 31, 433, 62, 155, 12);
       g.fillStyle(0x273d6b, 1).fillRect(bodyX - 30, 380, 60, 12);
     }
-    if (this.batterSprite) this.batterSprite.setX(bodyX);
+    const visualAge = this.lastVisualSwingAt === null
+      ? null : Math.max(0, this.clock - this.lastVisualSwingAt);
+    const visualActive = visualAge !== null && visualAge < 480 &&
+      (this.holding || this.flight !== null);
+    const bFrame = batterFrameAt(visualAge, visualActive);
+    if (this.batterSprite) {
+      if (this.batterSprite.texture.key === 'batter_frames') {
+        this.batterSprite.setFrame(bFrame).setRotation(0);
+      } else {
+        const tilts = [0,-.03,-.09,-.02,.15,.23,.08,0];
+        this.batterSprite.setRotation(tilts[bFrame] * side);
+      }
+      const advance = [0,-1,-4,-3,6,9,3,0][bFrame] * side;
+      const lift = [0,0,-2,-4,-6,-4,-1,0][bFrame];
+      this.batterSprite.setPosition(bodyX + advance, 465 + lift +
+        (bFrame === 0 ? Math.sin(this.clock / 360) * 1.3 : 0));
+    }
 
-    const age = this.swingAt === null ? -1 : this.clock - this.swingAt;
-    const activeSwing = this.holding && age < 300;
+    const age = visualAge ?? -1;
+    const activeSwing = visualActive && age < 400;
     const rotation = activeSwing ? (Math.min(age / 300, 1) - .5) * .7 : 0;
     const batY = CONTACT_Y - (activeSwing ? Math.sin(Math.PI * clamp(age / 300, 0, 1)) * 10 : 0);
     // Never draw a second full wooden bat on top of the illustrated batter
@@ -549,11 +592,19 @@ export class DerbyScene extends Phaser.Scene {
       g.lineBetween(this.batX + side * 94, batY + 21,
         this.batX - side * 64, batY - 7 + rotation * 31);
     } else if (activeSwing) {
-      const trailAlpha = 0.35 + 0.32 * Math.sin(Math.PI * clamp(age / 300, 0, 1));
-      g.lineStyle(10, 0xf0d19b, trailAlpha);
-      g.lineBetween(bodyX + side * 49, 416, this.batX, batY);
-      g.lineStyle(3, 0xfff3d5, trailAlpha);
-      g.lineBetween(bodyX + side * 49, 416, this.batX, batY);
+      // An arcing bat trail is synchronized to the articulated torso frames.
+      // It is deliberately independent of the hit-test sweet spot.
+      const t = clamp(age / 360, 0, 1);
+      const trailAlpha = (0.24 + 0.56 * Math.sin(Math.PI * t)) *
+        clamp((420 - age) / 130, 0, 1);
+      const trailX = bodyX - side * (15 + 45 * t);
+      const trailY = 407 + Math.sin(Math.PI * t) * 57;
+      g.lineStyle(17, 0xfceac3, trailAlpha * .40);
+      g.lineBetween(bodyX + side * 45, 395, trailX, trailY);
+      g.lineStyle(6, 0xffd77b, trailAlpha);
+      g.lineBetween(bodyX + side * 50, 410, trailX - side * 28, trailY + 10);
+      g.lineStyle(3, 0xffffff, trailAlpha * 0.9);
+      g.lineBetween(trailX - side * 12, trailY - 12, trailX - side * 45, trailY + 25);
     }
     g.lineStyle(13, 0x70e9bb, this.batterSprite ? 0.58 : 1);
     g.lineBetween(this.batX - 18, batY, this.batX + 18, batY);
