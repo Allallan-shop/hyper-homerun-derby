@@ -246,6 +246,7 @@ export interface FieldLanding {
   fenceX: number;
   fenceY: number;
   fenceDistanceM: number;
+  visualRatio: number;
   crossedFence: boolean;
   fair: boolean;
 }
@@ -280,7 +281,7 @@ export function projectFieldLanding(
     worldX += Math.sign(direction) * Math.min(35, (Math.abs(direction) - FAIR_DIRECTION_LIMIT) * 140);
   }
   return {
-    worldX, worldY, fenceX, fenceY, fenceDistanceM,
+    worldX, worldY, fenceX, fenceY, fenceDistanceM, visualRatio,
     crossedFence: fair && distanceM > fenceDistanceM, fair
   };
 }
@@ -349,8 +350,11 @@ export function fieldFlyoverFrame(input: {
     clamp(65 + input.distanceM * 0.23, 85, 190);
   const fadeIn = smooth(elapsed / 220);
   const fadeOut = smooth((elapsed - (duration + input.holdMs - 340)) / 340);
+  // Use the *projected* path crossing, not the raw metre fraction. Long
+  // shots are compressed beyond the wall, so metres/distance would trigger
+  // HOME RUN! before the graphic actually clears the yellow fence.
   const fenceCrossProgress = Math.min(1,
-    landing.fenceDistanceM / Math.max(1, input.distanceM)
+    1 / Math.max(0.00001, landing.visualRatio)
   );
   return {
     offsetX, offsetY, ballX: groundX, ballY: groundY - arc,
