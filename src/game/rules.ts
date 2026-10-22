@@ -227,6 +227,34 @@ export function flightCameraView(input: {
   return { ballX, ballY, zoom, cameraX, cameraY, landed: t >= 1 };
 }
 
+// Eight inexpensive animation keys for optional 8-frame original character
+// sheets. The same phases also drive fallback still-image/pose movement.
+export function pitcherFrameAt(readyInMs: number, pitchElapsedMs: number | null): number {
+  if (pitchElapsedMs !== null) {
+    if (pitchElapsedMs < 80) return 4; // release
+    if (pitchElapsedMs < 190) return 5; // follow-through
+    if (pitchElapsedMs < 330) return 6; // recover
+    return 7;
+  }
+  if (readyInMs > 480) return 0;
+  if (readyInMs > 300) return 1; // step
+  if (readyInMs > 160) return 2; // wind-up
+  if (readyInMs > 0) return 3;   // cock arm before release
+  return 0;
+}
+
+export function batterFrameAt(swingAgeMs: number | null, engaged: boolean): number {
+  if (swingAgeMs === null || !engaged) return 0;
+  const age = Math.max(0, swingAgeMs);
+  if (age < 65) return 1;   // load
+  if (age < 125) return 2;  // stride
+  if (age < 195) return 3;  // start swing
+  if (age < 265) return 4;  // contact
+  if (age < 365) return 5;  // follow-through
+  if (age < 475) return 6;  // recover
+  return 7;
+}
+
 // A small set of visibly different ball flights, not a real-world physics engine.
 export type FlightStyle = 'grounder' | 'liner' | 'fly' | 'moonshot' | 'slice';
 export interface FlightProfile {
