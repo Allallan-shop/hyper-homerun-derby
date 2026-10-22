@@ -19,6 +19,7 @@ interface FlightAnimation {
   direction: number;
   distanceM: number;
   duration: number;
+  holdMs: number;
   launchX: number;
   launchY: number;
   landingX: number;
@@ -45,6 +46,7 @@ const PLATE_X = WIDTH / 2;
 const CONTACT_Y = 456;
 const PITCH_RELEASE_Y = 292;
 const MAX_FLIGHT_HOLD_MS = 820;
+const HR_FLIGHT_HOLD_MS = 1250;
 
 export class DerbyScene extends Phaser.Scene {
   private options: MatchOptions;
@@ -53,6 +55,9 @@ export class DerbyScene extends Phaser.Scene {
   private world!: Phaser.GameObjects.Container;
   private flightLayer!: Phaser.GameObjects.Container;
   private flightGraphics!: Phaser.GameObjects.Graphics;
+  private homeRunEffects!: Phaser.GameObjects.Graphics;
+  private homeRunTitle!: Phaser.GameObjects.Text;
+  private homeRunDistance!: Phaser.GameObjects.Text;
   private flightBallSprite: Phaser.GameObjects.Image | null = null;
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Text;
@@ -130,6 +135,18 @@ export class DerbyScene extends Phaser.Scene {
     }
     this.flightGraphics = this.add.graphics().setDepth(3);
     this.hudGraphics = this.add.graphics().setDepth(5);
+    this.homeRunEffects = this.add.graphics().setDepth(6);
+    this.homeRunTitle = this.add.text(WIDTH / 2, 214, 'HOME RUN!', {
+      fontSize: '72px', fontFamily: 'Impact, Arial Black, sans-serif',
+      color: '#ffe487', fontStyle: 'bold', stroke: '#a52e33',
+      strokeThickness: 12, align: 'center'
+    }).setOrigin(0.5).setDepth(7).setVisible(false);
+    this.homeRunTitle.setShadow(3, 5, '#2d1b22', 7, true, true);
+    this.homeRunDistance = this.add.text(WIDTH / 2, 288, '', {
+      fontSize: '37px', fontFamily: 'Arial, sans-serif',
+      fontStyle: 'bold', color: '#fff7dc', stroke: '#713238',
+      strokeThickness: 7, align: 'center'
+    }).setOrigin(0.5).setDepth(7).setVisible(false);
     this.hud = this.add.text(27, 20, '', {
       color: '#ffffff', fontSize: '24px', fontFamily: 'sans-serif',
       stroke: '#0d1c26', strokeThickness: 4
@@ -230,7 +247,7 @@ export class DerbyScene extends Phaser.Scene {
 
     if (this.flight) {
       this.flight.elapsed += dt;
-      if (this.flight.elapsed >= this.flight.duration + MAX_FLIGHT_HOLD_MS) {
+      if (this.flight.elapsed >= this.flight.duration + this.flight.holdMs) {
         this.flight = null;
       }
       // Never throw the next pitch while a contacted ball is airborne or
@@ -314,6 +331,7 @@ export class DerbyScene extends Phaser.Scene {
         elapsed: 0, result: record.result, direction,
         distanceM: record.distanceM,
         duration: clamp(1150 + record.distanceM * 3.1, 1600, 2850),
+        holdMs: record.result === 'HR' ? HR_FLIGHT_HOLD_MS : MAX_FLIGHT_HOLD_MS,
         launchX, launchY, launchRadius,
         landingX: clamp(PLATE_X + direction * horizontalTravel, 85, WIDTH - 85),
         landingY: record.result === 'HR' ? 209 : record.result === 'FOUL' ? 315 : 343,
@@ -339,10 +357,11 @@ export class DerbyScene extends Phaser.Scene {
       launchY: flight.launchY,
       direction: flight.direction,
       distanceM: flight.distanceM,
+      centerFenceDistanceM: this.options.stage.fenceDistance,
       outcome: flight.result as 'HR' | 'HIT' | 'FOUL',
       elapsedMs: flight.elapsed,
       flightMs: flight.duration,
-      holdMs: MAX_FLIGHT_HOLD_MS,
+      holdMs: flight.holdMs,
       viewWidth: WIDTH,
       viewHeight: HEIGHT
     });
@@ -356,7 +375,7 @@ export class DerbyScene extends Phaser.Scene {
     // Keep the ball visible from the exact impact location throughout the
     // initial background dissolve. Fade it out with the field on return.
     const exitT = clamp(
-      (flight.elapsed - (flight.duration + MAX_FLIGHT_HOLD_MS - 340)) / 340,
+      (flight.elapsed - (flight.duration + flight.holdMs - 340)) / 340,
       0, 1
     );
     const ballAlpha = 1 - exitT * exitT * (3 - 2 * exitT);
@@ -383,13 +402,42 @@ export class DerbyScene extends Phaser.Scene {
         .lineBetween(view.groundX - 9, view.groundY,
           view.groundX + 9, view.groundY);
     }
-    this.hud.setText(
-      `打球結果 ${flight.result}    ${flight.distanceM.toLocaleString('ja-JP')}m`
-    );
+    // The celebratory graphic appears only once the projected ball has
+    // actually crossed the SAME fence curve used for the HR decision.
+    if (flight.result === 'HR' && view.visiblyOverFence) {
+      const crossedFor = Math.max(0,
+        flight.elapsed - flight.duration * view.fenceCrossProgress);
+      const reveal = clamp(crossedFor / 150, 0, 1);
+      const strength = reveal * ballAlpha;
+      const pulse = Math.max(0, 1 - crossedFor / 450);
+      this.homeRunTitle.setVisible(true).setAlpha(strength)
+        .setScale(0.88 + reveal * 0.12 + pulse * 0.06);
+      this.homeRunDistance.setVisible(true).setAlpha(strength)
+        .setText(`${flight.distanceM.toLocaleString('ja-JP')} m`);
+      if (pulse > 0) {
+        this.homeRunEffects.lineStyle(6 + pulse * 6, 0xffe385, pulse * 0.9)
+          .strokeCircle(view.fenceX, view.fenceY, 24 + (1 - pulse) * 70);
+        for (let angleIndex = 0; angleIndex < 10; angleIndex++) {
+          const angle = angleIndex * Math.PI * 2 / 10;
+          const start = 42 + (1 - pulse) * 22;
+          const finish = start + 28 * pulse;
+          this.homeRunEffects.lineStyle(3, 0xffeaae, pulse)
+            .lineBetween(
+              view.fenceX + Math.cos(angle) * start,
+              view.fenceY + Math.sin(angle) * start,
+              view.fenceX + Math.cos(angle) * finish,
+              view.fenceY + Math.sin(angle) * finish
+            );
+        }
+      }
+    }
+    const outcomeShown = view.landed || view.visiblyOverFence;
+    this.hud.setText(outcomeShown
+      ? `打球結果 ${flight.result}    ${flight.distanceM.toLocaleString('ja-JP')}m`
+      : `打球を追跡中… ${flight.distanceM.toLocaleString('ja-JP')}m`);
     this.prompt.setY(154).setText(view.landed
       ? `着弾！ ${flight.result} / ${flight.distanceM.toLocaleString('ja-JP')}m`
-      : `打球を追跡中… ${flight.distanceM.toLocaleString('ja-JP')}m`
-    );
+      : '打球を追跡中…');
   }
 
   private renderPitchHistory(g: Phaser.GameObjects.Graphics): void {
@@ -415,6 +463,9 @@ export class DerbyScene extends Phaser.Scene {
     g.clear();
     this.hudGraphics.clear();
     this.flightGraphics.clear();
+    this.homeRunEffects.clear();
+    this.homeRunTitle.setVisible(false);
+    this.homeRunDistance.setVisible(false);
     if (this.ballSprite) this.ballSprite.setVisible(false);
     if (this.flightBallSprite) this.flightBallSprite.setVisible(false);
     if (!this.flight) {
