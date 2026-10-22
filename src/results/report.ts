@@ -11,6 +11,7 @@ export function statsRows(report: RunReport): [string, string][] {
     ['ホームラン率', percentage(report.homeRunRate)],
     ['ミート率', percentage(report.contactRate)],
     ['最長連続ホームラン', number(report.longestStreak) + ' 本'],
+    ['最長滞空時間', (report.maxAirTimeMs / 1000).toFixed(2) + ' 秒'],
     ['再挑戦回数', number(report.retries) + ' 回'],
     ['平均タイミング誤差', report.averageTimingErrorMs === null ? '—' : report.averageTimingErrorMs.toFixed(1) + ' ms']
   ];
