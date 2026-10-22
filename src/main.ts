@@ -53,7 +53,7 @@ class DerbyApp {
       this.attachEvents();
       this.renderModes();
       this.switchTo('title');
-      get('app-status').textContent = 'R5 飛球カメラ版 / サーバー保存なし';
+      get('app-status').textContent = 'R6 フェンス連動判定版 / サーバー保存なし';
       window.setInterval(() => this.paintTimer(), 80);
     } catch (error) {
       get('error-message').textContent = error instanceof Error ? error.message : String(error);
