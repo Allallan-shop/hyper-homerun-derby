@@ -78,6 +78,9 @@ export interface PitchRecord {
   contactOffset: number | null;
   timingErrorMs: number | null;
   distanceM: number;
+  // Optional so old-session report fixtures remain valid.
+  flightStyle?: FlightStyle;
+  airTimeMs?: number;
 }
 export interface RunState {
   mode: Mode;
@@ -109,6 +112,7 @@ export interface RunReport {
   longestStreak: number;
   retries: number;
   averageTimingErrorMs: number | null;
+  maxAirTimeMs: number;
   radar: [number, number, number, number, number];
 }
 
@@ -223,6 +227,86 @@ export function flightCameraView(input: {
   return { ballX, ballY, zoom, cameraX, cameraY, landed: t >= 1 };
 }
 
+// A small set of visibly different ball flights, not a real-world physics engine.
+export type FlightStyle = 'grounder' | 'liner' | 'fly' | 'moonshot' | 'slice';
+export interface FlightProfile {
+  style: FlightStyle;
+  airTimeMs: number;
+  peakHeightPx: number;
+  hookPx: number;
+  bouncePx: number;
+}
+
+// A perfect home run hangs for about four seconds. We keep the R6 scoring,
+// strike positions, metre scale and fence geometry completely untouched.
+export function planBallFlight(input: {
+  outcome: 'HR' | 'HIT' | 'FOUL';
+  distanceM: number;
+  quality: number;
+  timingErrorMs: number;
+  direction: number;
+  random?: () => number;
+}): FlightProfile {
+  const q = clamp(input.quality, 0, 1);
+  const variation = clamp(input.random?.() ?? Math.random(), 0, 1);
+  const mistimed = Math.abs(input.timingErrorMs) > 66;
+  let style: FlightStyle;
+  let duration: number;
+  let peak: number;
+  if (input.outcome === 'HR') {
+    if (q >= 0.87 && input.distanceM >= 123) {
+      style = 'moonshot';
+      duration = 3700 + variation * 470; // 3.70–4.17 seconds
+      peak = 215 + variation * 44;
+    } else if (q >= 0.66 && !mistimed) {
+      style = 'fly';
+      duration = 2700 + variation * 700;
+      peak = 151 + variation * 48;
+    } else {
+      style = 'liner';
+      duration = 1850 + variation * 630;
+      peak = 82 + variation * 43;
+    }
+  } else if (input.outcome === 'FOUL') {
+    style = 'slice';
+    duration = 1180 + variation * 1050;
+    peak = 63 + variation * 105;
+  } else if (q < 0.52) {
+    style = 'grounder';
+    duration = 840 + variation * 550;
+    peak = 13 + variation * 8;
+  } else if (q > 0.84 && variation > 0.6) {
+    style = 'fly';
+    duration = 2250 + variation * 700;
+    peak = 130 + variation * 53;
+  } else {
+    style = 'liner';
+    duration = 1250 + variation * 650;
+    peak = 57 + variation * 48;
+  }
+  return {
+    style,
+    airTimeMs: Math.round(duration),
+    peakHeightPx: peak,
+    // Mild spin/slice movement only while airborne, endpoints remain fixed.
+    hookPx: style === 'slice' ? clamp(input.direction, -1.2, 1.2) * 56
+      : (style === 'liner' ? input.direction * 14 : input.direction * 6),
+    bouncePx: style === 'grounder' ? 12 : 0
+  };
+}
+
+export function ballFlightHeight(profile: FlightProfile, progress: number): number {
+  const t = clamp(progress, 0, 1);
+  if (profile.style === 'grounder') {
+    const bump = Math.abs(Math.sin(t * Math.PI * 5)) * (1 - t) * profile.bouncePx;
+    return Math.sin(Math.PI * t) ** 2 * profile.peakHeightPx + bump;
+  }
+  const shape = profile.style === 'moonshot' ? 0.62
+    : profile.style === 'liner' ? 1.7
+    : profile.style === 'slice' ? 1.17 : 1;
+  return Math.pow(Math.max(0, Math.sin(Math.PI * t)), shape) * profile.peakHeightPx;
+}
+
 // Single source of truth for the stadium and its fair-territory fence.
 // The original user's latest R6 direction overrides the earlier surreal
 // max-distance preference *for now*: keep ordinary hits around 50–160 m.
@@ -311,6 +395,7 @@ export function fieldFlyoverFrame(input: {
   direction: number;
   distanceM: number;
   centerFenceDistanceM?: number;
+  profile?: FlightProfile;
   outcome: 'HR' | 'HIT' | 'FOUL';
   elapsedMs: number;
   flightMs: number;
@@ -329,7 +414,9 @@ export function fieldFlyoverFrame(input: {
   const landing = projectFieldLanding(
     input.distanceM, input.direction, input.centerFenceDistanceM ?? 122
   );
-  const worldBallX = HOME_X + (landing.worldX - HOME_X) * progress;
+  const sideways = input.profile
+    ? input.profile.hookPx * Math.sin(Math.PI * progress) ** 2 : 0;
+  const worldBallX = HOME_X + (landing.worldX - HOME_X) * progress + sideways;
   const worldBallY = HOME_Y + (landing.worldY - HOME_Y) * progress;
   const initialX = input.launchX - HOME_X;
   const initialY = input.launchY - HOME_Y;
@@ -346,8 +433,10 @@ export function fieldFlyoverFrame(input: {
   );
   const groundX = worldBallX + offsetX;
   const groundY = worldBallY + offsetY;
-  const arc = Math.sin(progress * Math.PI) *
-    clamp(65 + input.distanceM * 0.23, 85, 190);
+  const arc = input.profile
+    ? ballFlightHeight(input.profile, progress)
+    : Math.sin(progress * Math.PI) *
+      clamp(65 + input.distanceM * 0.23, 85, 190);
   const fadeIn = smooth(elapsed / 220);
   const fadeOut = smooth((elapsed - (duration + input.holdMs - 340)) / 340);
   // Use the *projected* path crossing, not the raw metre fraction. Long
@@ -428,6 +517,7 @@ export function summarizeRun(run: RunState): RunReport {
   const swings = rows.filter(x => x.swung).length;
   const contacts = rows.filter(x => ['HR', 'HIT', 'FOUL'].includes(x.result)).length;
   const bestDistance = rows.reduce((best, r) => Math.max(best, r.distanceM), 0);
+  const maxAirTimeMs = rows.reduce((best, r) => Math.max(best, r.airTimeMs ?? 0), 0);
   const timing = rows.map(x => x.timingErrorMs).filter((n): n is number => n !== null);
   const averageTimingErrorMs = timing.length ? timing.reduce((a,b) => a + Math.abs(b), 0) / timing.length : null;
   let streak = 0;
@@ -449,7 +539,7 @@ export function summarizeRun(run: RunState): RunReport {
     clearTimeMs: Math.max(0, (run.finishedAt ?? Date.now()) - (run.startedAt ?? Date.now())),
     mode: run.mode.name,
     pitches, homeruns, homeRunRate, swings, contacts, contactRate,
-    bestDistance, longestStreak, retries: run.retries, averageTimingErrorMs, radar
+    bestDistance, maxAirTimeMs, longestStreak, retries: run.retries, averageTimingErrorMs, radar
   };
 }
 export function formatTime(ms: number): string {
