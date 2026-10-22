@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  addStageResult, battingSideSign, buyUpgrade, fenceDistanceAtDirection, fieldFlyoverFrame, flightCameraView, followBat, formatTime, makeRun, pitchDuration, pitchHorizontalX, projectFieldLanding, MAX_ARCADE_DISTANCE_M,
+  addStageResult, ballFlightHeight, batterFrameAt, battingSideSign, buyUpgrade, fenceDistanceAtDirection, fieldFlyoverFrame, flightCameraView, followBat, formatTime, makeRun, pitcherFrameAt, planBallFlight, pitchDuration, pitchHorizontalX, projectFieldLanding, MAX_ARCADE_DISTANCE_M,
   requiredHomeRuns, stagePoints, summarizeRun, swingContact, validateContent, weightedPick
 } from '../src/game/rules.ts';
 
@@ -278,4 +278,75 @@ test('R6 HR graphic waits until the DISPLAYED ball crosses the fence',()=>{
   assert(passed.groundY<passed.fenceY,
     'HR banner must appear only after the drawn wall is behind the ball');
   assert(passed.fenceCrossProgress>0.85 && passed.fenceCrossProgress<0.94);
+});
+
+test('R7 perfect HR hangs around four seconds and trajectories differ',()=>{
+  const make=(outcome,quality,distanceM,timingErrorMs,random=.5)=>
+    planBallFlight({outcome,quality,distanceM,timingErrorMs,direction:.25,
+      random:()=>random});
+  const perfect=make('HR',1,138,0,.5);
+  const good=make('HR',.76,128,12,.5);
+  const ugly=make('HR',.61,125,95,.5);
+  const rolling=make('HIT',.35,63,85,.5);
+  const liner=make('HIT',.65,89,25,.5);
+  const pop=make('HIT',.92,88,5,.95);
+  const slice=make('FOUL',.63,101,100,.5);
+  assert.equal(perfect.style,'moonshot');
+  assert(perfect.airTimeMs>=3700&&perfect.airTimeMs<=4200);
+  assert.equal(good.style,'fly');
+  assert.equal(ugly.style,'liner');
+  assert.equal(rolling.style,'grounder');
+  assert.equal(liner.style,'liner');
+  assert.equal(pop.style,'fly');
+  assert.equal(slice.style,'slice');
+  assert(rolling.airTimeMs<liner.airTimeMs);
+  assert(liner.airTimeMs<perfect.airTimeMs);
+  assert(ballFlightHeight(perfect,.5)>ballFlightHeight(liner,.5)*2);
+  for(const profile of [perfect,good,ugly,rolling,liner,pop,slice]){
+    assert.equal(ballFlightHeight(profile,0),0);
+    assert(Math.abs(ballFlightHeight(profile,1))<.00001);
+    for(let i=0;i<=20;i++)assert(ballFlightHeight(profile,i/20)>=-.00001);
+  }
+});
+
+test('R7 changing ball-flight arc never changes R6 contact/fence or endpoints',()=>{
+  const short=planBallFlight({outcome:'HR',quality:.6,distanceM:133,
+    timingErrorMs:80,direction:.2,random:()=>.4});
+  const high=planBallFlight({outcome:'HR',quality:.98,distanceM:133,
+    timingErrorMs:0,direction:.2,random:()=>.4});
+  assert(high.airTimeMs>short.airTimeMs+1000);
+  const args={launchX:495,launchY:442,direction:.2,distanceM:133,
+    centerFenceDistanceM:122,outcome:'HR',holdMs:1250,
+    viewWidth:960,viewHeight:600};
+  const end=(profile)=>fieldFlyoverFrame({...args,profile,
+    flightMs:profile.airTimeMs,elapsedMs:profile.airTimeMs});
+  const a=end(short),b=end(high);
+  assert(a.landed&&b.landed&&a.visiblyOverFence&&b.visiblyOverFence);
+  assert(Math.abs(a.groundY-b.groundY)<.00001);
+  assert(Math.abs(a.groundX-b.groundX)<.00001);
+  assert(a.groundY<a.fenceY-35);
+  const mid=(profile)=>fieldFlyoverFrame({...args,profile,
+    flightMs:profile.airTimeMs,elapsedMs:profile.airTimeMs/2});
+  assert(mid(high).ballY<mid(short).ballY-75);
+  const still=projectFieldLanding(133,.2,122);
+  assert(still.crossedFence);
+});
+
+test('R7 player animations follow delivery and swing state without changing timing',()=>{
+  assert.equal(pitcherFrameAt(700,null),0);
+  assert.equal(pitcherFrameAt(400,null),1);
+  assert.equal(pitcherFrameAt(200,null),2);
+  assert.equal(pitcherFrameAt(100,null),3);
+  assert.equal(pitcherFrameAt(100,0),4);
+  assert.equal(pitcherFrameAt(100,120),5);
+  assert.equal(pitcherFrameAt(100,260),6);
+  assert.equal(pitcherFrameAt(100,480),7);
+  assert.equal(batterFrameAt(null,false),0);
+  assert.equal(batterFrameAt(60,true),1);
+  assert.equal(batterFrameAt(160,true),3);
+  assert.equal(batterFrameAt(220,true),4);
+  assert.equal(batterFrameAt(310,true),5);
+  assert.equal(batterFrameAt(430,true),6);
+  assert.equal(batterFrameAt(550,true),7);
+  assert.equal(batterFrameAt(150,false),0);
 });
