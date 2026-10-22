@@ -223,6 +223,61 @@ export function flightCameraView(input: {
   return { ballX, ballY, zoom, cameraX, cameraY, landed: t >= 1 };
 }
 
+// Single source of truth for the stadium and its fair-territory fence.
+// The original user's latest R6 direction overrides the earlier surreal
+// max-distance preference *for now*: keep ordinary hits around 50–160 m.
+export const FAIR_DIRECTION_LIMIT = 0.89;
+export const FOUL_LINE_FENCE_M = 100;
+export const MAX_ARCADE_DISTANCE_M = 160;
+const HOME_X = 1100;
+const HOME_Y = 2182;
+const FENCE_HALF_WIDTH = 955;
+const CENTER_FENCE_Y = 385;
+const EDGE_FENCE_Y = 590;
+
+export function fenceDistanceAtDirection(centerDistanceM: number, direction: number): number {
+  const side = clamp(Math.abs(direction) / FAIR_DIRECTION_LIMIT, 0, 1);
+  return centerDistanceM - (centerDistanceM - FOUL_LINE_FENCE_M) * side * side;
+}
+
+export interface FieldLanding {
+  worldX: number;
+  worldY: number;
+  fenceX: number;
+  fenceY: number;
+  fenceDistanceM: number;
+  crossedFence: boolean;
+  fair: boolean;
+}
+
+// The *same* wall curve decides HR/HIT and positions the ball on the visual
+// field. A home run must visibly end beyond the outfield fence, never on turf.
+export function projectFieldLanding(
+  distanceM: number, direction: number, centerFenceDistanceM: number
+): FieldLanding {
+  const fair = Math.abs(direction) <= FAIR_DIRECTION_LIMIT;
+  const sector = clamp(direction / FAIR_DIRECTION_LIMIT, -1, 1);
+  const fenceX = HOME_X + sector * FENCE_HALF_WIDTH;
+  const fenceY = CENTER_FENCE_Y + (EDGE_FENCE_Y - CENTER_FENCE_Y) * sector * sector;
+  const fenceDistanceM = fenceDistanceAtDirection(centerFenceDistanceM, direction);
+  const physicalRatio = Math.max(0, distanceM) / fenceDistanceM;
+  // Beyond the fence, use a modest perspective compression so even a very
+  // long HR remains visible in this deliberately simplified 2D field map.
+  const visualRatio = physicalRatio <= 1 ? physicalRatio
+    : 1 + Math.min(0.11, (physicalRatio - 1) * 0.38);
+  let worldX = HOME_X + (fenceX - HOME_X) * visualRatio;
+  const worldY = HOME_Y + (fenceY - HOME_Y) * visualRatio;
+  if (!fair) {
+    // Put fouls visibly outside the normal fair sector without altering the
+    // fixed batting/strike mechanics.
+    worldX += Math.sign(direction) * Math.min(35, (Math.abs(direction) - FAIR_DIRECTION_LIMIT) * 140);
+  }
+  return {
+    worldX, worldY, fenceX, fenceY, fenceDistanceM,
+    crossedFence: fair && distanceM >= fenceDistanceM, fair
+  };
+}
+
 export interface FieldFlyoverFrame {
   offsetX: number;
   offsetY: number;
@@ -230,6 +285,10 @@ export interface FieldFlyoverFrame {
   ballY: number;
   groundX: number;
   groundY: number;
+  fenceX: number;
+  fenceY: number;
+  fenceCrossProgress: number;
+  visiblyOverFence: boolean;
   alpha: number;
   landed: boolean;
 }
@@ -243,6 +302,7 @@ export function fieldFlyoverFrame(input: {
   launchY: number;
   direction: number;
   distanceM: number;
+  centerFenceDistanceM?: number;
   outcome: 'HR' | 'HIT' | 'FOUL';
   elapsedMs: number;
   flightMs: number;
@@ -254,24 +314,17 @@ export function fieldFlyoverFrame(input: {
     const t = clamp(value, 0, 1);
     return t * t * (3 - 2 * t);
   };
-  const homeX = 1100, homeY = 2182;
   const fieldWidth = 2200, fieldHeight = 2400;
   const duration = Math.max(1, input.flightMs);
   const elapsed = Math.max(0, input.elapsedMs);
   const progress = clamp(elapsed / duration, 0, 1);
-  const targetY = input.outcome === 'HR'
-    ? 570 - clamp((input.distanceM - 225) * 0.25, -50, 200)
-    : input.outcome === 'FOUL' ? 1020
-    : clamp(1590 - input.distanceM * 2.5, 930, 1510);
-  const targetX = clamp(
-    homeX + clamp(input.direction, -1.1, 1.1) *
-      (input.outcome === 'FOUL' ? 760 : 475),
-    240, 1960
+  const landing = projectFieldLanding(
+    input.distanceM, input.direction, input.centerFenceDistanceM ?? 122
   );
-  const worldBallX = homeX + (targetX - homeX) * progress;
-  const worldBallY = homeY + (targetY - homeY) * progress;
-  const initialX = input.launchX - homeX;
-  const initialY = input.launchY - homeY;
+  const worldBallX = HOME_X + (landing.worldX - HOME_X) * progress;
+  const worldBallY = HOME_Y + (landing.worldY - HOME_Y) * progress;
+  const initialX = input.launchX - HOME_X;
+  const initialY = input.launchY - HOME_Y;
   const targetOffsetX = input.viewWidth * 0.5 - worldBallX;
   const targetOffsetY = input.viewHeight * 0.55 - worldBallY;
   const follow = smooth((elapsed - 50) / 500);
@@ -289,10 +342,16 @@ export function fieldFlyoverFrame(input: {
     clamp(65 + input.distanceM * 0.23, 85, 190);
   const fadeIn = smooth(elapsed / 220);
   const fadeOut = smooth((elapsed - (duration + input.holdMs - 340)) / 340);
+  const fenceCrossProgress = Math.min(1,
+    landing.fenceDistanceM / Math.max(1, input.distanceM)
+  );
   return {
-    offsetX, offsetY,
-    ballX: groundX, ballY: groundY - arc,
+    offsetX, offsetY, ballX: groundX, ballY: groundY - arc,
     groundX, groundY,
+    fenceX: landing.fenceX + offsetX,
+    fenceY: landing.fenceY + offsetY,
+    fenceCrossProgress,
+    visiblyOverFence: landing.crossedFence && progress >= fenceCrossProgress,
     alpha: fadeIn * (1 - fadeOut),
     landed: progress >= 1
   };
@@ -328,10 +387,14 @@ export function swingContact(input: {
   const quality = clamp(1 - Math.abs(normalizedOffset) * 0.34 - Math.abs(normalizedTiming) * 0.42, 0, 1);
   const direction = normalizedOffset * 0.46 + normalizedTiming * 0.8;
   const random = input.random ?? Math.random;
-  const distanceM = Math.max(1, Math.round((65 + powerLevel * 17 + quality * 205) * (0.84 + random() * 0.32)));
-  const result: Contact['result'] = Math.abs(direction) > 0.89
-    ? 'FOUL'
-    : distanceM >= fenceDistance ? 'HR' : 'HIT';
+  // Temporary realistic range for the user's current visual review; future
+  // fantasy long-distance mode can override this one calculation later.
+  const distanceM = clamp(Math.round(
+    46 + quality * 82 + (powerLevel - 1) * 3.2 + (random() - 0.5) * 16
+  ), 40, MAX_ARCADE_DISTANCE_M);
+  const landing = projectFieldLanding(distanceM, direction, fenceDistance);
+  const result: Contact['result'] = !landing.fair ? 'FOUL'
+    : landing.crossedFence ? 'HR' : 'HIT';
   return { result, distanceM, direction, quality };
 }
 export function addStageResult(run: RunState, stage: Stage, records: PitchRecord[], cleared: boolean): number {
