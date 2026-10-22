@@ -49,11 +49,29 @@ class DerbyApp {
       if (!contentResult.ok || !assetsResult.ok) throw new Error('設定ファイルを読み込めませんでした');
       this.content = await contentResult.json() as GameContent;
       this.assets = await assetsResult.json() as AssetManifest;
+      // Optional untracked local art pack. It keeps the tracked assets.json
+      // unchanged, avoiding the prior R4/R5 git-pull conflicts. Vite can
+      // serve index.html for a missing JSON path, hence the MIME check.
+      try {
+        const override = await fetch(
+          new URL('config/asset-overrides.json', document.baseURI),
+          { cache: 'no-store' }
+        );
+        if (override.ok && (override.headers.get('content-type') ?? '').includes('json')) {
+          const local = await override.json() as Partial<AssetManifest>;
+          this.assets = {
+            images: { ...this.assets.images, ...(local.images ?? {}) },
+            sounds: { ...this.assets.sounds, ...(local.sounds ?? {}) }
+          };
+        }
+      } catch {
+        // Art overlays must never prevent the game from starting.
+      }
       validateContent(this.content);
       this.attachEvents();
       this.renderModes();
       this.switchTo('title');
-      get('app-status').textContent = 'R6 フェンス連動判定版 / サーバー保存なし';
+      get('app-status').textContent = 'R7 弾道・選手アニメーション版 / サーバー保存なし';
       window.setInterval(() => this.paintTimer(), 80);
     } catch (error) {
       get('error-message').textContent = error instanceof Error ? error.message : String(error);
