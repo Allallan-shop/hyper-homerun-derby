@@ -23,3 +23,7 @@ dist/
 build/
 coverage/
 .cache/
+
+# Optional R4/R7 local image-review pack (not yet approved for public source)
+public/config/asset-overrides.json
+public/assets/*.png
