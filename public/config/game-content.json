@@ -1,0 +1,189 @@
+{
+  "title": "HYPER HOME RUN DERBY",
+  "modes": [
+    {
+      "id": "normal",
+      "name": "NORMAL",
+      "enabled": true,
+      "stageIds": [
+        "rookie",
+        "trickster",
+        "chaos"
+      ],
+      "speedMultiplier": 1,
+      "spreadMultiplier": 1,
+      "quotaMultiplier": 1
+    },
+    {
+      "id": "hard",
+      "name": "HARD",
+      "enabled": false,
+      "unlockAfter": "normal",
+      "stageIds": [
+        "rookie",
+        "trickster",
+        "chaos"
+      ],
+      "speedMultiplier": 0.82,
+      "spreadMultiplier": 1.3,
+      "quotaMultiplier": 1.22
+    }
+  ],
+  "pitchers": [
+    {
+      "id": "rookie",
+      "name": "入門投手",
+      "tagline": "まずはストレートを打ってみよう。",
+      "imageId": "pitcher_rookie",
+      "voiceId": "voice_rookie"
+    },
+    {
+      "id": "trickster",
+      "name": "魔球投手",
+      "tagline": "ボールの動きに惑わされるな。",
+      "imageId": "pitcher_trickster",
+      "voiceId": "voice_trickster"
+    },
+    {
+      "id": "chaos",
+      "name": "最終投手",
+      "tagline": "もう何が飛んでくるかわからない。",
+      "imageId": "pitcher_chaos",
+      "voiceId": "voice_chaos"
+    }
+  ],
+  "stages": [
+    {
+      "id": "rookie",
+      "name": "STAGE 1",
+      "pitcherId": "rookie",
+      "totalPitches": 10,
+      "requiredHomeruns": 3,
+      "pitchDurationMs": 870,
+      "horizontalSpread": 55,
+      "fenceDistance": 122,
+      "pool": [
+        {
+          "id": "fastball",
+          "type": "straight",
+          "effect": "none",
+          "weight": 85
+        },
+        {
+          "id": "changeup",
+          "type": "changeup",
+          "effect": "none",
+          "weight": 15
+        }
+      ]
+    },
+    {
+      "id": "trickster",
+      "name": "STAGE 2",
+      "pitcherId": "trickster",
+      "totalPitches": 18,
+      "requiredHomeruns": 7,
+      "pitchDurationMs": 740,
+      "horizontalSpread": 75,
+      "fenceDistance": 122,
+      "pool": [
+        {
+          "id": "fastball",
+          "type": "straight",
+          "effect": "none",
+          "weight": 40
+        },
+        {
+          "id": "slider",
+          "type": "slider",
+          "effect": "none",
+          "weight": 20
+        },
+        {
+          "id": "changeup",
+          "type": "changeup",
+          "effect": "none",
+          "weight": 20
+        },
+        {
+          "id": "zigzag",
+          "type": "zigzag",
+          "effect": "bounce",
+          "weight": 20
+        }
+      ]
+    },
+    {
+      "id": "chaos",
+      "name": "FINAL STAGE",
+      "pitcherId": "chaos",
+      "totalPitches": 28,
+      "requiredHomeruns": 15,
+      "pitchDurationMs": 630,
+      "horizontalSpread": 92,
+      "fenceDistance": 122,
+      "pool": [
+        {
+          "id": "fastball",
+          "type": "straight",
+          "effect": "none",
+          "weight": 25
+        },
+        {
+          "id": "slider",
+          "type": "slider",
+          "effect": "none",
+          "weight": 15
+        },
+        {
+          "id": "accel",
+          "type": "accelerate",
+          "effect": "none",
+          "weight": 20
+        },
+        {
+          "id": "zigzag",
+          "type": "zigzag",
+          "effect": "clone",
+          "weight": 20
+        },
+        {
+          "id": "vanishing-slider",
+          "type": "slider",
+          "effect": "vanish",
+          "weight": 20
+        }
+      ]
+    }
+  ],
+  "upgrades": {
+    "power": {
+      "label": "パワー",
+      "maxLevel": 10,
+      "baseCost": 130,
+      "stepCost": 120
+    },
+    "meet": {
+      "label": "ミート",
+      "maxLevel": 10,
+      "baseCost": 110,
+      "stepCost": 110
+    },
+    "speed": {
+      "label": "スピード",
+      "maxLevel": 10,
+      "baseCost": 110,
+      "stepCost": 110
+    }
+  },
+  "share": {
+    "hashtag": "ハイパーホームランダービー",
+    "gameUrl": "",
+    "headline": "HYPER HOME RUN DERBY"
+  },
+  "gameplay": {
+    "defaultBattingSide": "left",
+    "strikeHalfWidth": 96,
+    "batAimHalfWidth": 105
+  }
+}

@@ -23,3 +23,12 @@ dist/
 build/
 coverage/
 .cache/
+
+# Optional R4/R7 local image-review pack (not yet approved for public source)
+public/config/asset-overrides.json
+public/assets/*.png
+
+# Review-pack docs extracted at the local game root
+R7_README.txt
+R7_ACTOR_FRAMES_PREVIEW.jpg
+SHA256SUMS.txt

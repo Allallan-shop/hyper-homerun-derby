@@ -1,0 +1,20 @@
+{
+  "_note": "Set relative media paths to swap art and audio without modifying the game logic. Empty values use simple in-game shapes or silence.",
+  "images": {
+    "background": "",
+    "batter": "",
+    "pitcher_rookie": "",
+    "pitcher_trickster": "",
+    "pitcher_chaos": "",
+    "ball": ""
+  },
+  "sounds": {
+    "bat_hit": "",
+    "homerun": "",
+    "foul": "",
+    "voice_rookie": "",
+    "voice_trickster": "",
+    "voice_chaos": "",
+    "bgm_match": ""
+  }
+}
