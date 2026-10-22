@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  addStageResult, battingSideSign, buyUpgrade, fieldFlyoverFrame, flightCameraView, followBat, formatTime, makeRun, pitchDuration, pitchHorizontalX,
+  addStageResult, battingSideSign, buyUpgrade, fenceDistanceAtDirection, fieldFlyoverFrame, flightCameraView, followBat, formatTime, makeRun, pitchDuration, pitchHorizontalX, projectFieldLanding, MAX_ARCADE_DISTANCE_M,
   requiredHomeRuns, stagePoints, summarizeRun, swingContact, validateContent, weightedPick
 } from '../src/game/rules.ts';
 
@@ -40,7 +40,7 @@ test('continuous horizontal pitch and bat following are smooth',()=>{
 });
 
 test('hit quality and direction depend on horizontal offset and timing',()=>{
-  const perfect=swingContact({offset:0,width:85,timingErrorMs:0,powerLevel:4,fenceDistance:190,random:()=>0.5});
+  const perfect=swingContact({offset:0,width:85,timingErrorMs:0,powerLevel:4,fenceDistance:122,random:()=>0.5});
   assert(perfect && perfect.result==='HR');
   const foul=swingContact({offset:40,width:80,timingErrorMs:140,powerLevel:4,fenceDistance:190,random:()=>0.5});
   assert.equal(foul?.result,'FOUL');
@@ -78,25 +78,25 @@ test('run timer, radar and hit summary are derived from pitch history',()=>{
   run.startedAt=1000;
   run.finishedAt=61000;
   run.records=[
-    {stageId:'one',pitchId:'x',motion:'straight',effect:'none',result:'HR',swung:true,contactOffset:0,timingErrorMs:12,distanceM:1000},
-    {stageId:'one',pitchId:'x',motion:'straight',effect:'none',result:'HIT',swung:true,contactOffset:5,timingErrorMs:15,distanceM:190},
+    {stageId:'one',pitchId:'x',motion:'straight',effect:'none',result:'HR',swung:true,contactOffset:0,timingErrorMs:12,distanceM:150},
+    {stageId:'one',pitchId:'x',motion:'straight',effect:'none',result:'HIT',swung:true,contactOffset:5,timingErrorMs:15,distanceM:90},
     {stageId:'one',pitchId:'x',motion:'straight',effect:'none',result:'TAKE',swung:false,contactOffset:null,timingErrorMs:null,distanceM:0},
-    {stageId:'two',pitchId:'x',motion:'zigzag',effect:'clone',result:'HR',swung:true,contactOffset:0,timingErrorMs:8,distanceM:260}
+    {stageId:'two',pitchId:'x',motion:'zigzag',effect:'clone',result:'HR',swung:true,contactOffset:0,timingErrorMs:8,distanceM:130}
   ];
   const report=summarizeRun(run);
   assert.equal(report.clearTimeMs,60000);
   assert.equal(report.pitches,4);
   assert.equal(report.homeruns,2);
   assert.equal(report.contactRate,1);
-  assert.equal(report.bestDistance,1000);
+  assert.equal(report.bestDistance,150);
   assert.equal(report.radar[4],100);
   assert.equal(report.longestStreak,1);
   assert.equal(formatTime(60000),'01:00.00');
 });
 
 test('first-pass balance: clean hits can be HR while modest contacts are only HIT',()=>{
-  const best=swingContact({offset:0,width:80,timingErrorMs:0,powerLevel:1,fenceDistance:225,random:()=>0.5});
-  const modest=swingContact({offset:40,width:80,timingErrorMs:75,powerLevel:1,fenceDistance:225,random:()=>0.5});
+  const best=swingContact({offset:0,width:80,timingErrorMs:0,powerLevel:1,fenceDistance:122,random:()=>0.5});
+  const modest=swingContact({offset:40,width:80,timingErrorMs:75,powerLevel:1,fenceDistance:122,random:()=>0.5});
   assert.equal(best?.result,'HR');
   assert.equal(modest?.result,'HIT');
 });
@@ -164,7 +164,7 @@ test('seamless camera keeps the exact original frame at ball contact',()=>{
 
 test('R5 flight field starts at contact, scrolls across the stadium, and fades back',()=>{
   const args={
-    launchX:485,launchY:448,direction:.48,distanceM:300,
+    launchX:485,launchY:448,direction:.48,distanceM:140,
     outcome:'HR',flightMs:2200,holdMs:820,
     viewWidth:960,viewHeight:600
   };
@@ -189,7 +189,76 @@ test('R5 flight field starts at contact, scrolls across the stadium, and fades b
   assert(Math.abs(landed.ballY-landed.groundY)<.0001);
   const closing=fieldFlyoverFrame({...args,elapsedMs:args.flightMs+args.holdMs});
   assert.equal(closing.alpha,0);
-  const hit=fieldFlyoverFrame({...args,outcome:'HIT',elapsedMs:args.flightMs});
+  const hit=fieldFlyoverFrame({...args,outcome:'HIT',distanceM:90,elapsedMs:args.flightMs});
   assert(hit.offsetY<landed.offsetY,
     'HIT should land infield/shallower than a HR');
+});
+
+test('R6 realistic distance range and shared stadium wall match the game config',()=>{
+  const cfg=JSON.parse(readFileSync(new URL('../public/config/game-content.json',import.meta.url),'utf8'));
+  assert(cfg.stages.every(s=>s.fenceDistance===122),'same baseball park for all opponents');
+  assert.equal(fenceDistanceAtDirection(122,0),122);
+  assert.equal(fenceDistanceAtDirection(122,.89),100);
+  for(const power of [1,4,10,20])for(const random of [0,.25,.5,1]){
+    const contact=swingContact({offset:0,width:80,timingErrorMs:0,
+      powerLevel:power,fenceDistance:122,random:()=>random});
+    assert(contact);
+    assert(contact.distanceM<=MAX_ARCADE_DISTANCE_M);
+    assert(contact.distanceM>=40);
+  }
+});
+
+test('R6 a HR visibly lands outside the wall while a HIT stays on the field',()=>{
+  for(const direction of [-.85,-.5,0,.5,.85]){
+    const wall=fenceDistanceAtDirection(122,direction);
+    const hit=projectFieldLanding(Math.floor(wall-1),direction,122);
+    const hr=projectFieldLanding(Math.ceil(wall+1),direction,122);
+    assert(hit.fair&&hr.fair);
+    assert.equal(hit.crossedFence,false);
+    assert.equal(hr.crossedFence,true);
+    assert(hit.worldY>hit.fenceY,'HIT lands between plate and fence');
+    assert(hr.worldY<hr.fenceY-35,'HR must visibly clear the drawn fence/wall');
+    // Wall positions follow M0 590 Q1100 180 2200 590 from flight-field.svg.
+    const fraction=(hr.fenceX-1100)/1100;
+    const svgFence=385+205*fraction*fraction;
+    assert(Math.abs(hr.fenceY-svgFence)<1e-8);
+    const flight=fieldFlyoverFrame({
+      launchX:480,launchY:456,direction,distanceM:Math.ceil(wall+1),
+      centerFenceDistanceM:122,outcome:'HR',
+      elapsedMs:1800,flightMs:1800,holdMs:1250,
+      viewWidth:960,viewHeight:600
+    });
+    assert.equal(flight.landed,true);
+    assert.equal(flight.visiblyOverFence,true);
+    assert(flight.groundY<flight.fenceY-35,'flyover and scorer use the SAME wall');
+    const shallower=fieldFlyoverFrame({
+      launchX:480,launchY:456,direction,distanceM:Math.floor(wall-1),
+      centerFenceDistanceM:122,outcome:'HIT',
+      elapsedMs:1800,flightMs:1800,holdMs:820,
+      viewWidth:960,viewHeight:600
+    });
+    assert(!shallower.visiblyOverFence);
+    assert(shallower.groundY>shallower.fenceY,'in-play hit landing is before fence');
+  }
+});
+
+test('R6 borderline fence and foul positions never produce false HR',()=>{
+  assert.equal(projectFieldLanding(122,0,122).crossedFence,false);
+  for(const direction of [-1.05,-.92,.92,1.05]){
+    const distant=projectFieldLanding(160,direction,122);
+    assert.equal(distant.fair,false);
+    assert.equal(distant.crossedFence,false);
+  }
+  for(const offset of [-38,0,38])for(const timing of [-70,0,70]){
+    for(const power of [1,4,9]){
+      const swing=swingContact({
+        offset,width:80,timingErrorMs:timing,powerLevel:power,
+        fenceDistance:122,random:()=>.5
+      });
+      assert(swing);
+      const landing=projectFieldLanding(swing.distanceM,swing.direction,122);
+      assert.equal(swing.result,landing.fair
+        ? landing.crossedFence?'HR':'HIT' : 'FOUL');
+    }
+  }
 });
