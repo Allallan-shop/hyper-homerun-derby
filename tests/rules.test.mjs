@@ -262,3 +262,20 @@ test('R6 borderline fence and foul positions never produce false HR',()=>{
     }
   }
 });
+
+test('R6 HR graphic waits until the DISPLAYED ball crosses the fence',()=>{
+  const args={
+    launchX:480,launchY:456,direction:0,distanceM:160,
+    centerFenceDistanceM:122,outcome:'HR',
+    flightMs:2000,holdMs:1250,viewWidth:960,viewHeight:600
+  };
+  const approaching=fieldFlyoverFrame({...args,elapsedMs:1700});
+  const passed=fieldFlyoverFrame({...args,elapsedMs:1850});
+  assert.equal(approaching.visiblyOverFence,false);
+  assert(approaching.groundY>approaching.fenceY,
+    'before HR banner the ball is still graphically inside');
+  assert.equal(passed.visiblyOverFence,true);
+  assert(passed.groundY<passed.fenceY,
+    'HR banner must appear only after the drawn wall is behind the ball');
+  assert(passed.fenceCrossProgress>0.85 && passed.fenceCrossProgress<0.94);
+});
