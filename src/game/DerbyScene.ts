@@ -418,10 +418,36 @@ export class DerbyScene extends Phaser.Scene {
       trail.lineStyle(2, 0xdf4547, 0.95 * ballAlpha)
         .strokeCircle(view.ballX, view.ballY, radius * 0.64);
     }
-    if (t > 0.23 && t < 0.96) {
-      // Shadow on the scrolling field gives an immediate sense of altitude.
-      trail.fillStyle(0x0d2d23, 0.25 * view.alpha)
-        .fillEllipse(view.groundX, view.groundY, 22, 9);
+    const projectedHeight = Math.max(0, view.groundY - view.ballY);
+    if (t > 0.16 && t < 0.99) {
+      // Dynamic shadow size/opacity ties the moving ball to the field. The
+      // upper moonshot has a weak wide shadow; liners have a sharp low one.
+      trail.fillStyle(0x0b3324,
+        clamp(0.38 - projectedHeight / 800, 0.08, 0.37) * view.alpha)
+        .fillEllipse(view.groundX, view.groundY,
+          17 + projectedHeight * 0.13, 6 + projectedHeight * 0.035);
+      if (flight.profile.style === 'grounder') {
+        // Short rolling bounces: dust replaces the long white flight streak.
+        const dust = (1 - t) * view.alpha;
+        for (let i = 0; i < 3; i++) {
+          trail.fillStyle(0xe8d29f, 0.15 * dust)
+            .fillCircle(view.groundX - 7 - i * 11,
+              view.groundY + Math.sin((t * 9 + i) * Math.PI) * 3,
+              4 + i * 3);
+        }
+      } else {
+        const glowing = flight.profile.style === 'moonshot';
+        const glowColor = glowing ? 0xffe0a5 : 0xcfe8f3;
+        const density = glowing ? 6 : flight.profile.style === 'liner' ? 3 : 4;
+        for (let i = density; i >= 1; i--) {
+          const intensity = (1 - i / (density + 1)) * view.alpha * ballAlpha;
+          const bend = flight.profile.hookPx / 60;
+          trail.fillStyle(glowColor, intensity * (glowing ? .18 : .12))
+            .fillCircle(view.ballX - (flight.direction * 4 + bend * 2) * i,
+              view.ballY + (5 + (glowing ? 2 : 1)) * i,
+              Math.max(1.5, radius * (0.9 - i / (density + 3))));
+        }
+      }
     }
     if (t >= 0.72) {
       const markerAlpha = clamp((t - 0.72) / 0.24, 0, 1) * view.alpha;
