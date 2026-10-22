@@ -397,7 +397,7 @@ export function swingContact(input: {
   // Temporary realistic range for the user's current visual review; future
   // fantasy long-distance mode can override this one calculation later.
   const distanceM = clamp(Math.round(
-    46 + quality * 82 + (powerLevel - 1) * 3.2 + (random() - 0.5) * 16
+    55 + quality * 82 + (powerLevel - 1) * 3.2 + (random() - 0.5) * 16
   ), 40, MAX_ARCADE_DISTANCE_M);
   const landing = projectFieldLanding(distanceM, direction, fenceDistance);
   const result: Contact['result'] = !landing.fair ? 'FOUL'
