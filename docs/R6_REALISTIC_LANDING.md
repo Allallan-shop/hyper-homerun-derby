@@ -41,3 +41,8 @@ Simple independent numeric sweep (17,017 direction × distance combinations) sho
 5. If one serious mismatch appears, report the shot with a screenshot or 5–10 seconds of game recording. Do not restart a large multi-iteration polish cycle.
 
 **Gate:** Human R6 visual PASS pending. No merge, no deployment.
+
+
+## R6 visual crossing synchronization
+
+The displayed field uses mild perspective compression **after** the nominal fence crossing to keep even 150–160m balls on the 2200px map. The graphic effect must therefore start when the **rendered ball actually crosses the rendered fence** (`fenceCrossProgress = 1 / landing.visualRatio`), not when its physical metre ratio says the fence was crossed. This was specifically corrected after reviewing boundary cases. Tests check a long 160m center-field HR just before and just after the drawn boundary.
